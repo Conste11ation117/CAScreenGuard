@@ -1,0 +1,59 @@
+# Security Policy
+
+## What this project is (and is not)
+
+CAScreenGuard is a **visual privacy barrier for an unattended screen**. It is *not* a security boundary.
+
+It *does*:
+
+- keep the unlock password and the authorization code as PBKDF2-SHA1 hashes (120 000 iterations, random salt)
+- keep the marker key used for tamper detection in external credentials (registry + `%APPDATA%`), never in the config file
+- detect a deleted or modified config file and refuse to lock until the authorization code is supplied
+- swallow `Win`, `Alt+Tab`, `Alt+Esc` and `Ctrl+Esc` while locked
+
+It deliberately does *not*:
+
+- lock the Windows session, encrypt the disk, hide running processes, or block network access
+- block `Ctrl+Alt+Del` — that is the Secure Attention Sequence, and no user-mode program can intercept it
+- protect against anyone who can modify the program. Replacing the script with one that skips the
+  password check, or simply killing the process, defeats it. **Any user-mode screen cover works this way.**
+
+If you need real confidentiality, use Windows lock (`Win+L`) together with BitLocker, and do not rely on
+a screen-covering tool.
+
+## Supported versions
+
+Only the latest release is supported.
+
+| Version | Supported |
+|---|---|
+| 1.0.x | yes |
+
+## Storage locations (for auditing)
+
+| What | Where |
+|---|---|
+| Config (hidden, HMAC-marked) | `<install dir>\.cascreenguard.config.json` |
+| External credentials | `HKCU\Software\CAScreenGuard` and `%APPDATA%\CAScreenGuard\store.json` |
+| Program files | `<chosen location>\CAScreenGuard-<date>\` |
+| Desktop shortcut | `%USERPROFILE%\Desktop\CAScreenGuard.lnk` |
+| Uninstall entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\CAScreenGuard` |
+
+No password, authorization code or hint is ever stored in plain text. The only plain-text secret is the
+authorization **hint** you type yourself — do not put the code itself there.
+
+## Reporting a vulnerability
+
+Please open a **private security advisory** on GitHub
+(Security → Advisories → "Report a vulnerability") rather than a public issue.
+
+Helpful details:
+
+- what you did, what happened, and what you expected
+- the affected version (see `CHANGELOG.md`) and your Windows build
+- whether the machine had an existing installation
+
+Please **do not include real passwords or authorization codes** in a report — reproduce with throwaway
+values instead.
+
+There is no bug bounty. Credit will be given in the changelog unless you prefer otherwise.

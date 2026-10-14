@@ -1,0 +1,58 @@
+# 打一个 v* 标签推上来，GitHub 就会自动：
+#   1. 在标签指向的那个提交上现打一份「全部文件」的 zip
+#   2. 从 CHANGELOG.md 里摘出这一版的说明当正文
+#   3. 建 Release 并把 zip 挂上去
+# zip 是现打的，所以不会出现「附件还是上一版」这种事。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the zip from this tag
+        run: |
+          set -e
+          FILES=".gitattributes .gitignore build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CHANGELOG.md Installer.cs LICENSE make-icon.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png"
+          zip -r "CAScreenGuard-${GITHUB_REF_NAME}-all.zip" $FILES
+          unzip -l "CAScreenGuard-${GITHUB_REF_NAME}-all.zip"
+
+      - name: Pull this version's notes out of CHANGELOG.md
+        run: |
+          set -e
+          awk -v v="$GITHUB_REF_NAME" '
+            index($0, "## [" substr(v,2) "]") == 1 { f = 1; next }
+            f && (substr($0,1,3) == "## " || substr($0,1,1) == "[") { exit }
+            f { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            printf 'Release %s\n' "$GITHUB_REF_NAME" > release-notes.md
+          fi
+          wc -l release-notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TITLE="CAScreenGuard $GITHUB_REF_NAME"
+          # 重推同一个标签（比如重写了历史）时，直接在原来那份 Release 上更新，
+          # 别再 create 一次 —— 否则 gh 会报 "already exists"，Actions 上就是个红叉。
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file release-notes.md
+            gh release upload "$GITHUB_REF_NAME" CAScreenGuard-*-all.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              CAScreenGuard-*-all.zip \
+              --title "$TITLE" \
+              --notes-file release-notes.md
+          fi

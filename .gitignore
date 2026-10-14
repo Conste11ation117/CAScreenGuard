@@ -1,0 +1,15 @@
+# 中间产物
+obj/
+dist/
+chk.dll
+
+# 压缩包
+*.zip
+*.7z
+*.rar
+
+# 日志与编辑器
+*.log
+.vscode/
+.idea/
+*.user

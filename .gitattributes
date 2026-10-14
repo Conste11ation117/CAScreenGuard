@@ -1,0 +1,13 @@
+# 这个项目的脚本依赖 CRLF 与 UTF-8 BOM，明确固定下来，免得换机器 checkout 时被改掉
+* text=auto eol=crlf
+
+# 二进制，别动
+*.exe binary
+*.ico binary
+*.png binary
+*.7z binary
+*.zip binary
+
+# GitHub Actions 的 workflow 必须是 LF：里面的 shell 片段如果带 \r，
+# runner 上的 bash 会报 "$'\r': command not found"。这条要放在 * 规则后面才生效。
+.github/workflows/* text eol=lf

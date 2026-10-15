@@ -4,7 +4,7 @@
 
 # From the author: what does this software do?
 
-**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any unseen peeking, theft, or tampering.**
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any undetectable peeking, theft, or tampering.**
 
 *How was this built?*
 
@@ -36,7 +36,7 @@ Double-click the wizard and you are done in about two minutes. The release also 
 
 ## 0. Meta-positioning
 
-**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any unseen peeking, theft, or tampering.**
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any undetectable peeking, theft, or tampering.**
 
 ## 1. What it is good for — and what it is not
 

@@ -2,6 +2,14 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
+# From the author: what does this software do?
+
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any unseen peeking, theft, or tampering.**
+
+*How was this built?*
+
+*Co-developed with DeepSeek v4.1 flash, Kimi Code, and DeepSeek Harness.*
+
 A tiny Windows tool that keeps an eye on your screen while you are away: it turns the monitor off
 (**only the monitor** — no sleep, no session lock, the machine stays awake), covers everything with a
 full-screen black mask, and only the correct unlock password brings the screen back.
@@ -25,6 +33,10 @@ Double-click the wizard and you are done in about two minutes. The release also 
 `CAScreenGuard-1.0-all.zip` — the same package, for copying to a machine offline.
 
 ---
+
+## 0. Meta-positioning
+
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any unseen peeking, theft, or tampering.**
 
 ## 1. What it is good for — and what it is not
 

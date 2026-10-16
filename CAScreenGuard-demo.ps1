@@ -477,6 +477,24 @@ function New-RoundedPath {
     return $p
 }
 
+function Test-FontInstalled {
+    param([string]$Name)
+    try {
+        foreach ($f in [System.Drawing.FontFamily]::Families) { if ($f.Name -eq $Name) { return $true } }
+    } catch { }
+    return $false
+}
+
+function Get-MonoFontName {
+    # 优先 JetBrains Mono（ExtraLight/Thin 先试，大号时钟更精致），
+    # 没装就逐级退回系统自带的等宽字体，最后兜底 Segoe UI。
+    foreach ($cand in @('JetBrains Mono ExtraLight', 'JetBrains Mono Thin', 'JetBrains Mono Light',
+            'JetBrains Mono', 'Cascadia Mono', 'Consolas', 'Lucida Console', 'Segoe UI')) {
+        if (Test-FontInstalled $cand) { return $cand }
+    }
+    return 'Segoe UI'
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -970,6 +988,7 @@ function Invoke-GuardTick {
         }
 
         Update-CooldownMessage
+        Update-Clock
 
         # 「修改密码」窗口开着时，不抢焦点也不压顶，否则会盖住用户的对话框
         if (-not $script:DlgOpen) {
@@ -1777,6 +1796,40 @@ $card.Controls.Add($script:LockNotice)
 $footer2.SetBounds(0, 266, $cardW, 22)
 $card.Controls.Add($footer2)
 
+# ------------------------------------------------------------------ 卡片外面的时钟
+# 时间放在遮罩上（卡片之外），用 JetBrains Mono（没装自动回退系统等宽字体）
+$script:FontClock = Get-MonoFontName
+$script:ClockTime = New-Object System.Windows.Forms.Label
+$script:ClockTime.AutoSize = $false
+$script:ClockTime.BackColor = [System.Drawing.Color]::Transparent
+$script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(238, 238, 242)
+$script:ClockTime.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$script:Form.Controls.Add($script:ClockTime)
+
+$script:ClockDate = New-Object System.Windows.Forms.Label
+$script:ClockDate.AutoSize = $false
+$script:ClockDate.BackColor = [System.Drawing.Color]::Transparent
+$script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(150, 156, 164)
+$script:ClockDate.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$script:Form.Controls.Add($script:ClockDate)
+
+function Update-Clock {
+    # 只在文案真的变了才赋值：这个函数挂在 250ms 的定时器上，不能每 4 次就重写一遍标签
+    try {
+        $now = Get-Date
+        $timeText = $now.ToString('HH:mm')
+        if ($script:ClockTime.Text -ne $timeText) { $script:ClockTime.Text = $timeText }
+        if ($script:Lang -eq 'zh') {
+            $dateText = $now.ToString('M月d日 dddd', [System.Globalization.CultureInfo]::GetCultureInfo('zh-CN'))
+        }
+        else {
+            $dateText = $now.ToString('dddd, MMM d', [System.Globalization.CultureInfo]::GetCultureInfo('en-US'))
+        }
+        if ($script:ClockDate.Text -ne $dateText) { $script:ClockDate.Text = $dateText }
+    } catch { }
+}
+Update-Clock
+
 # 按 DPI 放大整套布局，然后把字号设回点数值：
 # 声明 DPI 感知后，控件的坐标/尺寸需要跟着 DPI 放大（否则在高缩放屏上会显得很小）；
 # 而字体是点单位、本来就会随 DPI 变大，所以必须在缩放之后重新设一遍字号，否则会被二次放大。
@@ -1795,6 +1848,29 @@ if ($script:Scale -gt 1.01) {
     $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
+
+# 时钟：贴在卡片上方居中排（也要在 DPI 缩放之后再定位，坐标才和卡片对得上）
+$clockW = [int]($card.Width * 1.5)
+$clockH = [int](118 * $script:Scale)
+$dateH = [int](34 * $script:Scale)
+$clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
+$dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
+$timePt = 54
+$timeTop = $dateY - $clockH
+$clockTopLimit = [int](8 * $script:Scale)
+if ($timeTop -lt $clockTopLimit) {
+    # 屏幕不够高（小笔记本 / 低分辨率）：按可用高度等比缩小字号，再贴着上边缘排，
+    # 免得时钟被顶出屏幕
+    $avail = $dateY - $clockTopLimit
+    if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
+    $timePt = [Math]::Max(16, [Math]::Round(54 * ($avail / [double]$clockH), 1))
+    $clockH = $avail
+    $timeTop = $clockTopLimit
+}
+$script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
+$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
+$script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
+$script:ClockDate.Font = New-Object System.Drawing.Font($script:FontClock, [float]13)
 
 # 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
 $cardR = [int](18 * $script:Scale)

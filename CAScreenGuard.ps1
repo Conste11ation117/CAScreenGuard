@@ -476,6 +476,19 @@ function Get-WallpaperBitmap {
     catch { return $null }
 }
 
+function Install-WallpaperBackground {
+    
+    
+    
+    try {
+        $script:Wallpaper = Get-WallpaperBitmap
+        if (-not $script:Wallpaper) { return }
+        $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
+        $script:Form.BackgroundImage = $script:Wallpaper
+        if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
+    } catch { }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -905,7 +918,8 @@ function Invoke-SubmitAttempt {
         $script:AllowClose = $true
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
-        Invoke-UnlockTransition -SkipWait:$SelfTest
+        
+        
         $script:Form.Close()
         return
     }
@@ -1075,37 +1089,6 @@ function Restore-SystemState {
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
     try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
-}
-
-
-
-
-
-function Invoke-UnlockTransition {
-    param([switch]$SkipWait)
-    try {
-        if (-not $SkipWait) {
-            
-            
-            
-            Start-Sleep -Milliseconds 150
-            [System.Windows.Forms.Application]::DoEvents()
-        }
-        
-        $steps = 14
-        for ($i = 1; $i -le $steps; $i++) {
-            $t = $i / [double]$steps
-            $alpha = 1.0 - [Math]::Pow($t, 0.6)
-            if ($alpha -lt 0.05) { $alpha = 0.05 }
-            $script:Form.Opacity = $alpha
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 40
-        }
-    }
-    catch {
-        
-        try { $script:Form.Opacity = 1.0 } catch { }
-    }
 }
 
 
@@ -1663,11 +1646,6 @@ $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
 
-$script:Wallpaper = Get-WallpaperBitmap
-if ($script:Wallpaper) {
-    $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
-    $script:Form.BackgroundImage = $script:Wallpaper
-}
 
 
 
@@ -1843,27 +1821,44 @@ if ($script:Scale -gt 1.01) {
 }
 
 
-$clockW = [int]($card.Width * 1.5)
-$clockH = [int](136 * $script:Scale)   
-$dateH = [int](36 * $script:Scale)
-$clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
-$dateY = [int]($card.Top - (22 * $script:Scale) - $dateH)   
-$timePt = 68
-$timeTop = $dateY - $clockH
-$clockTopLimit = [int](8 * $script:Scale)
-if ($timeTop -lt $clockTopLimit) {
-    
-    
-    $avail = $dateY - $clockTopLimit
-    if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
-    $timePt = [Math]::Max(16, [Math]::Round(68 * ($avail / [double]$clockH), 1))
-    $clockH = $avail
-    $timeTop = $clockTopLimit
-}
-$script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
-$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
-$script:ClockTime.Font = New-Object System.Drawing.Font($family, [float]$timePt)
-$script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
+
+
+
+
+
+$primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$ox = $primaryNow.X - $script:Form.Bounds.X
+$oy = $primaryNow.Y - $script:Form.Bounds.Y
+
+$fontTime = New-Object System.Drawing.Font($family, [float]74, [System.Drawing.FontStyle]::Bold)
+$fontDate = New-Object System.Drawing.Font($family, [float]17, [System.Drawing.FontStyle]::Bold)
+$script:ClockTime.Font = $fontTime
+$script:ClockDate.Font = $fontDate
+$script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(245, 246, 248)
+$script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
+
+$clockW = [int]($primaryNow.Width * 0.8)
+$clockX = [int]($ox + ($primaryNow.Width - $clockW) / 2)
+$timeH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockTime.Text, $fontTime).Height
+$dateH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockDate.Text, $fontDate).Height
+
+
+$timeLeadDip = 0.257 * 74 * 96.0 / 72.0
+$dateLeadDip = 0.257 * 17 * 96.0 / 72.0
+$timeTop = [int]($oy + (162 - $timeLeadDip) * $script:Scale)
+$dateTop = [int]($oy + (162 + 71 + 32 - $dateLeadDip) * $script:Scale)
+$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
+$script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
+
+
+
+$cardTop = [int]($oy + $primaryNow.Height * 0.585 - $card.Height / 2)
+$minTop = $dateTop + $dateH + [int](28 * $script:Scale)
+if ($cardTop -lt $minTop) { $cardTop = $minTop }
+$maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)
+if ($cardTop -gt $maxTop -and $maxTop -gt $minTop) { $cardTop = $maxTop }
+$card.Left = [int]($ox + ($primaryNow.Width - $card.Width) / 2)
+$card.Top = $cardTop
 
 
 $cardR = [int](18 * $script:Scale)
@@ -2083,10 +2078,14 @@ try {
     if (-not $SelfTest) {
         if ($script:AutoReset) {
             
+            
+            Install-WallpaperBackground
             $script:State = 'Prompt'
         }
         else {
             [ScreenLockNative]::MonitorOff()
+            
+            Install-WallpaperBackground
             $script:State = 'Away'
             $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
             $script:LastBlankSent = Get-Date

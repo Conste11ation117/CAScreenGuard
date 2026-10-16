@@ -531,6 +531,13 @@ function Show-ErrorMsg {
     }
 }
 
+function Show-LockNotice {
+    
+    try { $script:LockNotice.Visible = $true } catch { }
+    try { $script:Footer1.Visible = $false } catch { }
+    try { $script:Footer2.Visible = $false } catch { }
+}
+
 function Hide-ErrorMsg {
     if ($script:BoxState -ne 'locked') { $script:BoxState = 'normal' }
     try { $script:BoxPanel.Invalidate() } catch { }
@@ -572,7 +579,7 @@ function Set-AuthLockedUI {
             $script:Txt.BackColor = $script:BoxPanel.BackColor
             $script:BoxPanel.Invalidate()
         } catch { }
-        try { $script:LockNotice.Visible = $true } catch { }
+        Show-LockNotice
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
             elseif ($c -is [System.Windows.Forms.Button] -and $c.Text -ne (T 'k19') -and $c.Text -ne (T 'k39')) {
@@ -958,7 +965,7 @@ function Invoke-SubmitAttempt {
             $script:BoxPanel.Invalidate()
         } catch { }
         Hide-ErrorMsg
-        try { $script:LockNotice.Visible = $true } catch { }
+        Show-LockNotice
         Invoke-Sound 'error'
         return
     }
@@ -1642,7 +1649,8 @@ else {
 
 $family = 'Microsoft YaHei UI'
 $cardW = 580
-$cardH = 380                          
+
+$cardH = 304
 
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'CAScreenGuard'
@@ -1674,7 +1682,7 @@ $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
 $logoSize = 32
 $logoGap = 12
-$titleY = 74
+$titleY = 34
 $groupX = [int](($cardW - ($logoSize + $logoGap + $titleW)) / 2)
 
 $title = New-Object System.Windows.Forms.Label
@@ -1721,14 +1729,14 @@ $subtitle.Text = (T 'k55')
 $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
 $subtitle.ForeColor = [System.Drawing.Color]::FromArgb(152, 158, 166)
 $subtitle.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$subtitle.SetBounds(0, 122, $cardW, 26)
+$subtitle.SetBounds(0, 82, $cardW, 26)
 $card.Controls.Add($subtitle)
 
 $boxW = 400
 $boxH = 52
 $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
-$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 170)
+$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 130)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
 $script:BoxPanel = $box          
 $card.Controls.Add($box)
@@ -1750,7 +1758,7 @@ $script:TxtError.AutoSize = $false
 $script:TxtError.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:TxtError.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
 $script:TxtError.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$script:TxtError.SetBounds(0, 234, $cardW, 24)
+$script:TxtError.SetBounds(0, 194, $cardW, 24)
 $script:TxtError.Visible = $false
 $card.Controls.Add($script:TxtError)
 
@@ -1763,7 +1771,8 @@ if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
 $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$footer1.SetBounds(0, 270, $cardW, 22)
+$footer1.SetBounds(0, 230, $cardW, 22)
+$script:Footer1 = $footer1          
 $card.Controls.Add($footer1)
 
 $footer2 = New-Object System.Windows.Forms.Label
@@ -1780,10 +1789,13 @@ $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:LockNotice.ForeColor = [System.Drawing.Color]::FromArgb(255, 96, 96)
 $script:LockNotice.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:LockNotice.Text = (T 'k63') + "`r`n" + (T 'k64')
-$script:LockNotice.SetBounds(0, 318, $cardW, 52)
+
+
+$script:LockNotice.SetBounds(0, 228, $cardW, 54)
 $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
-$footer2.SetBounds(0, 292, $cardW, 22)
+$footer2.SetBounds(0, 254, $cardW, 22)
+$script:Footer2 = $footer2
 $card.Controls.Add($footer2)
 
 
@@ -1870,8 +1882,7 @@ $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
 $script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
 
 
-
-$cardTop = [int]($oy + $primaryNow.Height * 0.585 - $card.Height / 2)
+$cardTop = [int]($oy + ($primaryNow.Height - $card.Height) / 2)
 $minTop = $dateTop + $dateH + [int](28 * $script:Scale)
 if ($cardTop -lt $minTop) { $cardTop = $minTop }
 $maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)

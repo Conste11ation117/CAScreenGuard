@@ -102,14 +102,16 @@ public static class ScreenLockNative
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint SetThreadExecutionState(uint esFlags);
 
-    public static void KeepSystemAwake()
+    // 这两个 API 是按线程生效的，返回值 0 = 调用失败。调用方必须能知道"到底发出了没有"：
+    // 睡眠/休眠恢复后请求可能已经不作数，要靠返回值判断该不该重发（不能把返回值丢掉）。
+    public static bool KeepSystemAwake()
     {
-        SetThreadExecutionState(0x80000000u | 0x00000001u);   // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        return SetThreadExecutionState(0x80000000u | 0x00000001u) != 0;   // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
     }
 
-    public static void ReleaseKeepAwake()
+    public static bool ReleaseKeepAwake()
     {
-        SetThreadExecutionState(0x80000000u);                 // ES_CONTINUOUS
+        return SetThreadExecutionState(0x80000000u) != 0;                 // ES_CONTINUOUS
     }
 
     // ---------------- idle / last input ----------------

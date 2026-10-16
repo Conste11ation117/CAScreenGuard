@@ -303,6 +303,15 @@ $script:FlagPath = Join-Path $script:StateDir 'running.flag'
 # 改屏保设置之前，把系统原来的值落一份盘：进程被强杀/断电时 finally 不会跑，
 # 只存在内存里的"原值"就丢了，下次启动读到的会是被我们改成 0 的那个值 —— 屏保就永久关着。
 $script:PresavePath = Join-Path $script:StateDir 'screen-saver-original.json'
+# guard.log：运行期间"发生了什么"的流水账，专门为了排错（用户会把它发出来）。
+# 所以这里有一条硬规矩：**不写任何可能算隐私的东西** —— 用户名、机器名、路径、PID 都不写。
+# 崩溃日志（crash-*.log / tick-errors.log）是本机的东西，可以写 user@machine、pid；guard.log 不行。
+$script:GuardLogPath = Join-Path $script:StateDir 'guard.log'
+# 定时器间隔 250ms。两个 tick 之间差出好几秒，说明机器睡过去了（或被饿死）——
+# 这两条时间戳就是用来发现这件事、以及"唤醒请求该不该重发"的。
+$script:LastAwakeTick = [datetime]::MinValue
+$script:StartedAt = Get-Date          # guard.log 里算"这次存活多久"用
+$script:LastTickWall = Get-Date
 
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
@@ -388,6 +397,31 @@ function Write-TickError {
     } catch { }
 }
 
+function Write-GuardLog {
+    # 排错流水账：启动/退出、定时器中断（怀疑睡过去又醒）、唤醒请求重发失败、界面线程异常。
+    # 硬规矩：**不写任何可能算隐私的东西** —— 用户名、机器名、路径、PID 一律不写。
+    # 这个文件是给用户发出来看的（崩溃日志是本机的东西，那边可以写 user@machine、pid）。
+    # 体积上限 64KB：超了截掉前一半只留最近的，免得无限增长。
+    param([string]$Message)
+    try {
+        if ([string]::IsNullOrEmpty($Message)) { return }
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        if (Test-Path -LiteralPath $script:GuardLogPath) {
+            if ((Get-Item -LiteralPath $script:GuardLogPath -Force).Length -gt 65536) {
+                $all = [System.IO.File]::ReadAllText($script:GuardLogPath)
+                $keep = $all.Length - 32768
+                if ($keep -lt 0) { $keep = 0 }
+                [System.IO.File]::WriteAllText($script:GuardLogPath,
+                    ("--- 日志超过 64KB，已截断，以下为最近部分 ---`r`n" + $all.Substring($keep)),
+                    (New-Object System.Text.UTF8Encoding($false)))
+            }
+        }
+        [System.IO.File]::AppendAllText($script:GuardLogPath,
+            ((Get-Date).ToString('s') + '  ' + $Message + "`r`n"),
+            (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Test-PreviousSession {
     # 上一次没正常结束就返回一个对象（含开始时间与崩溃日志路径），正常结束返回 $null
     if (-not (Test-Path -LiteralPath $script:FlagPath)) { return $null }
@@ -413,6 +447,24 @@ trap {
     catch { }
     exit 1
 }
+
+# ------------------------------------------------------------------ 全局异常兜底
+# 遮罩期间最怕的是"某个事件处理器抛异常 → 异常冒出消息循环 → 整个进程退出 → 桌面露出来"。
+# 所以界面线程上的未处理异常改成记一笔然后继续跑（遮罩还在），不做"弹窗 + 退出"。
+# 刻意**不写 crash-*.log**：那份日志代表"软件崩了"，下次启动会据此报警；这里异常已经被兜住、
+# 程序还活着，写进去就会误报（定时器的 tick-errors.log 当初也是同样的理由）。
+# 这条只管界面消息循环；启动阶段的异常仍走上面那个 trap（那会儿还没有遮罩需要保）。
+try {
+    [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+    [System.Windows.Forms.Application]::add_ThreadException({
+        param($sender, $e)
+        try { Write-GuardLog ('界面线程异常（已兜住，继续运行）：' + $e.Exception.GetType().Name + ' - ' + $e.Exception.Message) } catch { }
+    })
+    [AppDomain]::CurrentDomain.add_UnhandledException({
+        param($sender, $e)
+        try { Write-GuardLog ('非界面线程异常：' + $e.ExceptionObject.GetType().Name + ' - ' + $e.ExceptionObject.Message) } catch { }
+    })
+} catch { }
 
 # ------------------------------------------------------------------ 状态与常量
 $script:LastTickError = ''
@@ -1105,6 +1157,33 @@ function Invoke-GuardTick {
     try {
         if ($script:AllowClose) { return }
         $now = Get-Date
+
+        # 定时器间隔 250ms：两个 tick 之间差出好几秒，要么是机器睡过去又醒了，要么是定时器被饿死。
+        # 两种都按"可能刚从睡眠/休眠恢复"处理：重新把系统钉醒、把遮罩压回最前，熄屏状态下再熄一次屏。
+        # 不处理的话，睡眠恢复后唤醒请求可能已经不作数了、遮罩也可能被别的窗口盖住。
+        $gap = ($now - $script:LastTickWall).TotalSeconds
+        if ($gap -gt 5) {
+            Write-GuardLog ('定时器中断 {0:N1} 秒，按"可能刚从睡眠/休眠恢复"处理：重新保持唤醒并复位遮罩' -f $gap)
+            try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
+            $script:LastAwakeTick = $now
+            try { [ScreenLockNative]::ReassertTopMost($script:Form.Handle) } catch { }
+            if ($script:State -eq 'Away') {
+                $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
+                $script:LastBlankSent = $now
+                try { [ScreenLockNative]::MonitorOff() } catch { }
+            }
+        }
+        $script:LastTickWall = $now
+
+        # 唤醒请求周期复查：这个请求是按线程生效的，睡眠/休眠恢复后可能已经失效，所以每 30 秒重发一次。
+        # 成功不记日志（否则一条流水账被刷满），只记"发不出去"——那才是真出问题的迹象。
+        if (($now - $script:LastAwakeTick).TotalSeconds -ge 30) {
+            $script:LastAwakeTick = $now
+            $awakeOk = $false
+            try { $awakeOk = [ScreenLockNative]::KeepSystemAwake() } catch { $awakeOk = $false }
+            if (-not $awakeOk) { Write-GuardLog '唤醒请求重发失败（SetThreadExecutionState 返回 0）' }
+        }
+
         $idle = [uint32][ScreenLockNative]::GetIdleMilliseconds()
 
         if ($script:State -eq 'Away') {
@@ -1188,7 +1267,10 @@ function Initialize-SystemState {
     catch { $script:OrigScreenSaverReg = $null }
     Save-ScreenSaverPrerestore              # 改之前先把原值落盘
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
-    try { [ScreenLockNative]::KeepSystemAwake() } catch { }
+    # 保持唤醒 = 告诉系统"这条线程还在干活、别睡"（ES_SYSTEM_REQUIRED，按线程生效）。
+    # 请求失败时定时器里会每 30 秒复查重发一次，所以这里只要把时间戳记下来。
+    try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
+    $script:LastAwakeTick = Get-Date
     # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露。
     # -NoKeyboardHook 时整块跳过：全局低级键盘钩子会让每一次按键都先经过本进程，
     # 机器上若有远程控制 / 自动化 / AI 客户端这类程序，可能与它互相干扰。
@@ -1237,7 +1319,7 @@ function Restore-SystemState {
     }
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
-    try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
+    try { $null = [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 
 # ==================================================================
@@ -2199,6 +2281,14 @@ if ($SelfTest) {
 #  运行
 # ==================================================================
 try {
+    # guard.log 的第一条：这次是以什么模式起来的、键盘钩子开没开。出问题时一眼能对上是哪次运行。
+    $runMode = '熄屏锁屏'
+    if ($SelfTest) { $runMode = '自检' }
+    elseif ($script:AutoReset) { $runMode = '改密码' }
+    $hookState = '开'
+    if ($NoKeyboardHook) { $hookState = '关' }
+    Write-GuardLog ('启动：版本 ' + $script:AppVersion + '，Lang=' + $script:Lang + '，模式=' + $runMode + '，键盘钩子=' + $hookState)
+
     if (-not $SelfTest) { Initialize-SystemState }
 
     $script:Form.Show()
@@ -2244,6 +2334,7 @@ catch {
 
     if (-not $SelfTest) { $null = Write-CrashLog -ErrorRecord $_ -Where 'run' }
     try { $script:SelfTestFailed = $true } catch { }
+    Write-GuardLog ('异常退出：' + $_.Exception.GetType().Name + ' - ' + $msg)
     try {
         [System.Windows.Forms.MessageBox]::Show($msg, (T 'k58'), 'OK', 'Error') | Out-Null
     }
@@ -2256,6 +2347,8 @@ finally {
     try { $script:Form.Dispose() } catch { }
     try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   # 壁纸是本地大图，用完即放
     Restore-SystemState        # 无论哪种模式都收尾：点亮屏幕 + 恢复屏保/唤醒设置
+    # 收尾那条：解锁、自检、异常，最后都走到这儿。存活秒数用来对"那次到底跑了多久"（不写 PID）。
+    try { Write-GuardLog ('退出：存活 ' + [int]((Get-Date) - $script:StartedAt).TotalSeconds + ' 秒') } catch { }
     if ($SelfTest) {
         Write-Host ''
         Write-Host '================ CAScreenGuard 自检结果 ================'

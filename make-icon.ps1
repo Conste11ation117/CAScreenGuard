@@ -30,8 +30,8 @@ function New-RoundRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
 }
 
 function Draw-Key([System.Drawing.Graphics]$g, [float]$f, [float]$bx, [float]$side) {
-    # 用户指定的矩形：左边贴着 G 的右侧，上边界与右边界就是黑方块的边，下边界落在产品名那条线上。
-    # 钥匙朝上放：钥匙头（圆环）在矩形底部，杆一路伸到矩形顶部，齿开在上半段的右侧。
+    # 钥匙画在「SG」右侧那一竖条里：细杆朝上，底部是一个圆角握柄（不用圆环，圆环太占视觉空间），
+    # 杆的上半段右侧开两枚齿。
     $pad = $f * 0.030
     $rx = $bx + $side * 0.585 + $pad
     $ry = $bx + $pad
@@ -40,24 +40,32 @@ function Draw-Key([System.Drawing.Graphics]$g, [float]$f, [float]$bx, [float]$si
     if ($rw -le 0 -or $rh -le 0) { return }
     $cx = $rx + $rw / 2
     $brush = New-Object System.Drawing.SolidBrush $COLOR_LOCK
-    # 钥匙头：圆环（中间挖空），放在底部
-    $R = [Math]::Min([float]($rw * 0.50), [float]($rh * 0.30))
-    $cy = $ry + $rh - $R
-    $g.FillEllipse($brush, [float]($cx - $R), [float]($cy - $R), [float]($R * 2), [float]($R * 2))
-    $hole = $R * 0.40
-    $g.FillEllipse([System.Drawing.Brushes]::Black, [float]($cx - $hole), [float]($cy - $hole), [float]($hole * 2), [float]($hole * 2))
-    # 杆：从钥匙头往上伸到矩形顶部
-    $sw = $R * 0.46
-    $top = $ry
-    $bottom = $cy - $R * 0.55
-    $body = New-RoundRect ([float]($cx - $sw / 2)) ([float]$top) ([float]$sw) ([float]($bottom - $top)) ([float]($sw * 0.30))
+
+    # 握柄：底部一块近方形圆角矩形 + 中间一个方形小孔（不是圆环：圆环占地方且小尺寸下糊成一团）
+    $hh = $rw * 0.52
+    $hw = $rw * 0.74
+    $hy = $ry + $rh - $hh
+    $head = New-RoundRect ([float]($cx - $hw / 2)) ([float]$hy) ([float]$hw) ([float]$hh) ([float]($hh * 0.26))
+    $g.FillPath($brush, $head)
+    $holeS = $hh * 0.46
+    $hole = New-RoundRect ([float]($cx - $holeS / 2)) ([float]($hy + ($hh - $holeS) / 2)) ([float]$holeS) ([float]$holeS) ([float]($holeS * 0.26))
+    # 孔用"挖空"的方式画：孔的底色就是内层黑方块
+    $g.FillPath([System.Drawing.Brushes]::Black, $hole)
+    $hole.Dispose()
+
+    # 杆：从握柄上沿一路伸到顶端，顶端再收一个圆角（止于握柄，别压住握柄上的孔）
+    $sw = $rw * 0.22
+    $top = $ry + $sw * 0.5
+    $bottom = $hy + $hh * 0.12
+    $body = New-RoundRect ([float]($cx - $sw / 2)) ([float]($top - $sw * 0.5)) ([float]$sw) ([float]($bottom - $top + $sw)) ([float]($sw * 0.48))
     $g.FillPath($brush, $body)
-    # 齿：杆右侧两枚，开在靠上的位置（这样钥匙是"朝上"的）
-    $t1 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.155)) ([float]($sw * 0.85)) ([float]($sw * 0.52)) ([float]($sw * 0.16))
-    $t2 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.305)) ([float]($sw * 0.60)) ([float]($sw * 0.48)) ([float]($sw * 0.14))
+
+    # 齿：杆右侧两枚，越往上越短（读起来像钥匙而不是梳子）
+    $t1 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.17)) ([float]($sw * 0.95)) ([float]($sw * 0.52)) ([float]($sw * 0.16))
+    $t2 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.36)) ([float]($sw * 0.62)) ([float]($sw * 0.44)) ([float]($sw * 0.14))
     $g.FillPath($brush, $t1)
     $g.FillPath($brush, $t2)
-    $t1.Dispose(); $t2.Dispose(); $body.Dispose(); $brush.Dispose()
+    $t1.Dispose(); $t2.Dispose(); $head.Dispose(); $body.Dispose(); $brush.Dispose()
 }
 
 function Draw-Icon([int]$S, [switch]$Small) {
@@ -152,14 +160,51 @@ function Get-Frame([int]$s) {
 }
 
 $sizes = @(16, 24, 32, 48, 64, 128, 256)
-$pngs = @()
+
+# 帧格式：256 用 PNG（省体积，资源管理器认），更小的尺寸用标准 BMP 帧。
+# 原因：System.Drawing.Icon（.NET / GDI）读不了 PNG 压缩帧 —— 会解出一团彩色噪点，
+# 表现为脚本里那些窗体标题栏图标全变雪花。BMP 帧虽然大一点，但所有老工具都认。
+function Get-IcoFrame([System.Drawing.Bitmap]$Bmp, [bool]$UsePng) {
+    if ($UsePng) {
+        $ms = New-Object System.IO.MemoryStream
+        $Bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bytes = $ms.ToArray()
+        $ms.Dispose()
+        return , $bytes
+    }
+    $ms = New-Object System.IO.MemoryStream
+    $bw = New-Object System.IO.BinaryWriter($ms)
+    # BITMAPINFOHEADER：高度要写两倍（XOR 位图 + AND 掩码）
+    $bw.Write([uint32]40)
+    $bw.Write([int32]$Bmp.Width)
+    $bw.Write([int32]($Bmp.Height * 2))
+    $bw.Write([uint16]1)
+    $bw.Write([uint16]32)
+    $bw.Write([uint32]0)
+    $bw.Write([uint32]($Bmp.Width * $Bmp.Height * 4))
+    $bw.Write([int32]0); $bw.Write([int32]0); $bw.Write([uint32]0); $bw.Write([uint32]0)
+    for ($y = $Bmp.Height - 1; $y -ge 0; $y--) {
+        for ($x = 0; $x -lt $Bmp.Width; $x++) {
+            $c = $Bmp.GetPixel($x, $y)
+            $bw.Write([byte]$c.B); $bw.Write([byte]$c.G); $bw.Write([byte]$c.R); $bw.Write([byte]$c.A)
+        }
+    }
+    # AND 掩码：1bpp，每行补齐到 4 字节；全 0 = 透明度交给 alpha 通道
+    $rowBytes = [int]([Math]::Ceiling($Bmp.Width / 32.0) * 4)
+    $zero = New-Object byte[] $rowBytes
+    for ($y = 0; $y -lt $Bmp.Height; $y++) { $bw.Write($zero, 0, $rowBytes) }
+    $bw.Flush()
+    $bytes = $ms.ToArray()
+    $bw.Dispose(); $ms.Dispose()
+    return , $bytes
+}
+
+$frames = @()
 foreach ($s in $sizes) {
     $b = Get-Frame $s
     $b.Save((Join-Path $tmp ('cg_icon_' + $s + '.png')), [System.Drawing.Imaging.ImageFormat]::Png)
-    $ms = New-Object System.IO.MemoryStream
-    $b.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-    $pngs += , $ms.ToArray()
-    $b.Dispose(); $ms.Dispose()
+    $frames += , (Get-IcoFrame $b ($s -ge 256))
+    $b.Dispose()
 }
 $masterBig.Dispose(); $masterSmall.Dispose()
 
@@ -172,9 +217,9 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
     $d = [byte]$(if ($s -ge 256) { 0 } else { $s })
     $bw.Write($d); $bw.Write($d); $bw.Write([byte]0); $bw.Write([byte]0)
     $bw.Write([uint16]1); $bw.Write([uint16]32)
-    $bw.Write([uint32]$pngs[$i].Length); $bw.Write([uint32]$offset)
-    $offset += $pngs[$i].Length
+    $bw.Write([uint32]$frames[$i].Length); $bw.Write([uint32]$offset)
+    $offset += $frames[$i].Length
 }
-foreach ($p in $pngs) { $bw.Write($p) }
+foreach ($p in $frames) { $bw.Write($p) }
 $bw.Flush(); $bw.Close(); $fs.Close()
 Write-Host ('生成：' + $out + '   ' + (Get-Item -LiteralPath $out).Length + ' 字节   ' + ($sizes -join '/'))

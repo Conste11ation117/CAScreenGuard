@@ -573,6 +573,13 @@ function Show-ErrorMsg {
     }
 }
 
+function Show-LockNotice {
+    # 封禁提示出现时，把下面两行"快捷键/省电"提示让位给它（卡片就是靠这个才收得矮）
+    try { $script:LockNotice.Visible = $true } catch { }
+    try { $script:Footer1.Visible = $false } catch { }
+    try { $script:Footer2.Visible = $false } catch { }
+}
+
 function Hide-ErrorMsg {
     if ($script:BoxState -ne 'locked') { $script:BoxState = 'normal' }
     try { $script:BoxPanel.Invalidate() } catch { }
@@ -614,7 +621,7 @@ function Set-AuthLockedUI {
             $script:Txt.BackColor = $script:BoxPanel.BackColor
             $script:BoxPanel.Invalidate()
         } catch { }
-        try { $script:LockNotice.Visible = $true } catch { }
+        Show-LockNotice
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
             elseif ($c -is [System.Windows.Forms.Button] -and $c.Text -ne (T 'k19') -and $c.Text -ne (T 'k39')) {
@@ -1000,7 +1007,7 @@ function Invoke-SubmitAttempt {
             $script:BoxPanel.Invalidate()
         } catch { }
         Hide-ErrorMsg
-        try { $script:LockNotice.Visible = $true } catch { }
+        Show-LockNotice
         Invoke-Sound 'error'
         return
     }
@@ -1684,7 +1691,8 @@ else {
 # ==================================================================
 $family = 'Microsoft YaHei UI'
 $cardW = 580
-$cardH = 380                          # 底部要留出封禁提示两行的位置
+# 卡片不铺满高度：内容排完之后上下只留一点点余量。封禁提示出现时占用"快捷键提示"那两行的位置
+$cardH = 304
 
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'CAScreenGuard'
@@ -1716,7 +1724,7 @@ $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
 $logoSize = 32
 $logoGap = 12
-$titleY = 74
+$titleY = 34
 $groupX = [int](($cardW - ($logoSize + $logoGap + $titleW)) / 2)
 
 $title = New-Object System.Windows.Forms.Label
@@ -1763,14 +1771,14 @@ $subtitle.Text = (T 'k55')
 $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
 $subtitle.ForeColor = [System.Drawing.Color]::FromArgb(152, 158, 166)
 $subtitle.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$subtitle.SetBounds(0, 122, $cardW, 26)
+$subtitle.SetBounds(0, 82, $cardW, 26)
 $card.Controls.Add($subtitle)
 
 $boxW = 400
 $boxH = 52
 $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
-$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 170)
+$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 130)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
 $script:BoxPanel = $box          # 事件脚本块看不到局部变量，描边重绘要经 $script: 拿它
 $card.Controls.Add($box)
@@ -1792,7 +1800,7 @@ $script:TxtError.AutoSize = $false
 $script:TxtError.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:TxtError.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
 $script:TxtError.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$script:TxtError.SetBounds(0, 234, $cardW, 24)
+$script:TxtError.SetBounds(0, 194, $cardW, 24)
 $script:TxtError.Visible = $false
 $card.Controls.Add($script:TxtError)
 
@@ -1805,7 +1813,8 @@ if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
 $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$footer1.SetBounds(0, 270, $cardW, 22)
+$footer1.SetBounds(0, 230, $cardW, 22)
+$script:Footer1 = $footer1          # 封禁时要把它藏起来（事件里拿不到局部变量）
 $card.Controls.Add($footer1)
 
 $footer2 = New-Object System.Windows.Forms.Label
@@ -1822,10 +1831,13 @@ $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:LockNotice.ForeColor = [System.Drawing.Color]::FromArgb(255, 96, 96)
 $script:LockNotice.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:LockNotice.Text = (T 'k63') + "`r`n" + (T 'k64')
-$script:LockNotice.SetBounds(0, 318, $cardW, 52)
+# 封禁提示只在这两行的位置上出现（和 footer1/footer2 重叠）—— 出现时那两行提示会被隐藏，
+# 这样卡片就不用为它额外留一大块空白
+$script:LockNotice.SetBounds(0, 228, $cardW, 54)
 $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
-$footer2.SetBounds(0, 292, $cardW, 22)
+$footer2.SetBounds(0, 254, $cardW, 22)
+$script:Footer2 = $footer2
 $card.Controls.Add($footer2)
 
 # ------------------------------------------------------------------ 卡片外面的时钟
@@ -1911,9 +1923,8 @@ $dateTop = [int]($oy + (162 + 71 + 32 - $dateLeadDip) * $script:Scale)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
 $script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
 
-# 卡片：竖直落在主屏 58.5% 处（Win11 的登录框也是在时钟下方偏下），
-# 但至少要让开时钟，也不能被屏幕底边切掉
-$cardTop = [int]($oy + $primaryNow.Height * 0.585 - $card.Height / 2)
+# 卡片：竖直居中（收矮之后就不需要再往下挪了）；只有屏幕太矮、会压到时钟时才让位
+$cardTop = [int]($oy + ($primaryNow.Height - $card.Height) / 2)
 $minTop = $dateTop + $dateH + [int](28 * $script:Scale)
 if ($cardTop -lt $minTop) { $cardTop = $minTop }
 $maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)

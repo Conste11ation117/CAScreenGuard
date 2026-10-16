@@ -194,11 +194,16 @@ public class CAScreenGuardInstaller
     internal const string PAYLOAD_ICO = "{PAYLOAD_ICO}";
     const string PAYLOAD_EARLY = "{PAYLOAD_EARLY}";
     const string PAYLOAD_NATIVE = "{PAYLOAD_NATIVE}";
+    // MIT 要求"版权声明与许可声明随软件副本一起提供"：装出来的目录里必须有一份 LICENSE。
+    // 光在 README 里链一下不算 —— 发布版脚本被去掉了注释、两个 .cs 本来就没有版权头，
+    // 安装目录里等于什么声明都没有，这是个实打实的许可合规缺口。
+    const string PAYLOAD_LICENSE = "{PAYLOAD_LICENSE}";
 
     internal const string ScriptLeaf = "CAScreenGuard.ps1";
     internal const string IconLeaf = "CAScreenGuard.ico";
     internal const string EarlyLeaf = "ScreenLockEarly.cs";
     internal const string NativeLeaf = "ScreenLockNative.cs";
+    internal const string LicenseLeaf = "LICENSE";
     internal const string LnkLeaf = "CAScreenGuard.lnk";
     internal const string AppName = "CAScreenGuard";
     internal const string AppVersion = "V2.0.0";
@@ -231,7 +236,7 @@ public class CAScreenGuardInstaller
     {
         // 忘了跑 build-setup.ps1 就直接拿 csc 编的话，四个占位符还是字面量：编译能过，
         // 到 Convert.FromBase64String 才炸，用户看到的是一句莫名其妙的 Base-64 报错。
-        string[] ps = new string[] { PAYLOAD_PS1, PAYLOAD_ICO, PAYLOAD_EARLY, PAYLOAD_NATIVE };
+        string[] ps = new string[] { PAYLOAD_PS1, PAYLOAD_ICO, PAYLOAD_EARLY, PAYLOAD_NATIVE, PAYLOAD_LICENSE };
         foreach (string s in ps)
         {
             if (s == null || s.Length < 64 || s.IndexOf('{') >= 0) { return false; }
@@ -562,6 +567,9 @@ public class CAScreenGuardInstaller
             // 脚本运行时要 Add-Type 加载这两个 C# 源文件，必须和脚本放在一起
             File.WriteAllBytes(Path.Combine(dir, EarlyLeaf), Convert.FromBase64String(PAYLOAD_EARLY));
             File.WriteAllBytes(Path.Combine(dir, NativeLeaf), Convert.FromBase64String(PAYLOAD_NATIVE));
+            // MIT 的通知义务：版权与许可声明要跟着副本走，README 里链一下不算。
+            // 所以每一份安装都在安装目录里落一份 LICENSE（原样字节，不改行尾）。
+            File.WriteAllBytes(Path.Combine(dir, LicenseLeaf), Convert.FromBase64String(PAYLOAD_LICENSE));
         }
         catch
         {

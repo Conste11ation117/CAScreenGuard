@@ -26,9 +26,10 @@ $icoPath = Join-Path $root ($leaf + '.ico')
 $earlyPath = Join-Path $root 'ScreenLockEarly.cs'
 $nativePath = Join-Path $root 'ScreenLockNative.cs'
 $instCsPath = Join-Path $root 'Installer.cs'
+$licensePath = Join-Path $root 'LICENSE'
 $outExe = Join-Path $root ($leaf + '-Setup.exe')
 
-foreach ($f in @($demoPath, $icoPath, $earlyPath, $nativePath, $instCsPath)) {
+foreach ($f in @($demoPath, $icoPath, $earlyPath, $nativePath, $instCsPath, $licensePath)) {
     if (-not (Test-Path -LiteralPath $f)) { throw ('缺少源文件：' + $f) }
 }
 
@@ -191,10 +192,13 @@ $b64Ps1 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($ps1Path))
 $b64Ico = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($icoPath))
 $b64Early = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($cleanEarlyPath))
 $b64Native = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($cleanNativePath))
+# LICENSE 按原始字节嵌进去（不做行尾归一化）：许可文本要在副本里和仓库里逐字节一致
+$b64License = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($licensePath))
 
 $cs = [System.IO.File]::ReadAllText($instCsPath, [System.Text.Encoding]::UTF8)
 $cs = $cs.Replace('{PAYLOAD_PS1}', $b64Ps1).Replace('{PAYLOAD_ICO}', $b64Ico)
 $cs = $cs.Replace('{PAYLOAD_EARLY}', $b64Early).Replace('{PAYLOAD_NATIVE}', $b64Native)
+$cs = $cs.Replace('{PAYLOAD_LICENSE}', $b64License)
 $csPath = Join-Path $buildDir 'Installer.cs'
 [System.IO.File]::WriteAllText($csPath, $cs, $utf8bom)
 Write-Host ('安装器源码：' + (Get-Item -LiteralPath $csPath).Length + ' 字节')

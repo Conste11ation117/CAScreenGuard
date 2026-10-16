@@ -45,8 +45,8 @@ jobs:
             mkdir -p "pkg/CAScreenGuard-All/$(dirname "$f")"
             cp "$f" "pkg/CAScreenGuard-All/$f"
           done
-          # Setup-windows-x86：给"只想装一下"的人
-          cp CAScreenGuard-Setup.exe CAScreenGuard.ico README.md README.zh-CN.md pkg/CAScreenGuard-Setup-windows-x86/
+          # Setup-windows-x86：给"只想装一下"的人（LICENSE 必须一起发：MIT 的通知义务）
+          cp CAScreenGuard-Setup.exe CAScreenGuard.ico LICENSE README.md README.zh-CN.md pkg/CAScreenGuard-Setup-windows-x86/
           (cd pkg && zip -r ../CAScreenGuard-All.zip CAScreenGuard-All && zip -r ../CAScreenGuard-Setup-windows-x86.zip CAScreenGuard-Setup-windows-x86)
           unzip -l CAScreenGuard-All.zip
           unzip -l CAScreenGuard-Setup-windows-x86.zip

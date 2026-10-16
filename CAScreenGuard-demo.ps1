@@ -525,8 +525,27 @@ function Install-WallpaperBackground {
     try {
         $script:Wallpaper = Get-WallpaperBitmap
         if (-not $script:Wallpaper) { return }
+        # 卡片那块再压一层更深的暗色：整屏是"壁纸 + 55% 暗"，卡片区域是"更深的遮罩"，
+        # 于是卡片永远比周围更暗、还带一点壁纸的色调，而不是一块死黑。
+        # （画在背景图里，卡片本身改成透明透出来，避免 WinForms 透明度重绘的开销与闪烁）
+        try {
+            $r = [int](18 * $script:Scale)
+            if ($r -lt 12) { $r = 12 }
+            # $card.Left/Top 已经是相对遮罩窗体客户区的坐标，直接用
+            $path = New-RoundedPath $card.Left $card.Top $card.Width $card.Height $r
+            $g = [System.Drawing.Graphics]::FromImage($script:Wallpaper)
+            try {
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $deep = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(216, 0, 0, 0))
+                $g.FillPath($deep, $path)
+                $deep.Dispose()
+            }
+            finally { $g.Dispose() }
+            $path.Dispose()
+        } catch { }
         $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
         $script:Form.BackgroundImage = $script:Wallpaper
+        $card.BackColor = [System.Drawing.Color]::Transparent
         if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
     } catch { }
 }

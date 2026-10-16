@@ -483,8 +483,27 @@ function Install-WallpaperBackground {
     try {
         $script:Wallpaper = Get-WallpaperBitmap
         if (-not $script:Wallpaper) { return }
+        
+        
+        
+        try {
+            $r = [int](18 * $script:Scale)
+            if ($r -lt 12) { $r = 12 }
+            
+            $path = New-RoundedPath $card.Left $card.Top $card.Width $card.Height $r
+            $g = [System.Drawing.Graphics]::FromImage($script:Wallpaper)
+            try {
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $deep = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(216, 0, 0, 0))
+                $g.FillPath($deep, $path)
+                $deep.Dispose()
+            }
+            finally { $g.Dispose() }
+            $path.Dispose()
+        } catch { }
         $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
         $script:Form.BackgroundImage = $script:Wallpaper
+        $card.BackColor = [System.Drawing.Color]::Transparent
         if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
     } catch { }
 }

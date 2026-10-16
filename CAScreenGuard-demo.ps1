@@ -477,24 +477,6 @@ function New-RoundedPath {
     return $p
 }
 
-function Test-FontInstalled {
-    param([string]$Name)
-    try {
-        foreach ($f in [System.Drawing.FontFamily]::Families) { if ($f.Name -eq $Name) { return $true } }
-    } catch { }
-    return $false
-}
-
-function Get-MonoFontName {
-    # 优先 JetBrains Mono（ExtraLight/Thin 先试，大号时钟更精致），
-    # 没装就逐级退回系统自带的等宽字体，最后兜底 Segoe UI。
-    foreach ($cand in @('JetBrains Mono ExtraLight', 'JetBrains Mono Thin', 'JetBrains Mono Light',
-            'JetBrains Mono', 'Cascadia Mono', 'Consolas', 'Lucida Console', 'Segoe UI')) {
-        if (Test-FontInstalled $cand) { return $cand }
-    }
-    return 'Segoe UI'
-}
-
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -1659,7 +1641,7 @@ else {
 # ==================================================================
 $family = 'Microsoft YaHei UI'
 $cardW = 580
-$cardH = 352                          # 底部要留出封禁提示两行的位置
+$cardH = 380                          # 底部要留出封禁提示两行的位置
 
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'CAScreenGuard'
@@ -1681,10 +1663,30 @@ $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Boun
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
+# 标题行：品牌标记放在标题左边、与标题等高，「图标 + 五个字」作为一个整体居中
+# （先把标题的文字宽度量出来，才能算出这一组的起点）
+$titleText = (T 'k54')
+$titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
+# MeasureText 量出来的是物理像素，这里要换回布局用的逻辑像素（后面整体还要按 DPI 放大一次）
+$titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
+$logoSize = 32
+$logoGap = 12
+$titleY = 74
+$groupX = [int](($cardW - ($logoSize + $logoGap + $titleW)) / 2)
+
+$title = New-Object System.Windows.Forms.Label
+$title.AutoSize = $false
+$title.Text = $titleText
+$title.Font = $titleFont
+$title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
+$title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+$title.SetBounds($groupX + $logoSize + $logoGap, $titleY, $titleW + 8, 44)
+$card.Controls.Add($title)
+
 # 品牌标记：直接用代码画那两块倾斜的彩块（与程序图标同源，但不依赖 .ico 解码，
 # 任何 DPI 下都是矢量级清晰）
 $logoMark = New-Object System.Windows.Forms.Panel
-$logoMark.SetBounds([int](($cardW - 40) / 2), 12, 40, 40)
+$logoMark.SetBounds($groupX, $titleY + [int]((44 - $logoSize) / 2), $logoSize, $logoSize)
 $logoMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)   # 与卡片同色，等于透明
 $logoMark.Add_Paint({
         param($sender, $e)
@@ -1710,29 +1712,20 @@ $logoMark.Add_Paint({
     })
 $card.Controls.Add($logoMark)
 
-$title = New-Object System.Windows.Forms.Label
-$title.AutoSize = $false
-$title.Text = (T 'k54')
-$title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
-$title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
-$title.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$title.SetBounds(0, 54, $cardW, 36)
-$card.Controls.Add($title)
-
 $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.AutoSize = $false
 $subtitle.Text = (T 'k55')
 $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
 $subtitle.ForeColor = [System.Drawing.Color]::FromArgb(152, 158, 166)
 $subtitle.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$subtitle.SetBounds(0, 96, $cardW, 26)
+$subtitle.SetBounds(0, 122, $cardW, 26)
 $card.Controls.Add($subtitle)
 
 $boxW = 400
 $boxH = 52
 $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
-$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 142)
+$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 170)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
 $script:BoxPanel = $box          # 事件脚本块看不到局部变量，描边重绘要经 $script: 拿它
 $card.Controls.Add($box)
@@ -1754,7 +1747,7 @@ $script:TxtError.AutoSize = $false
 $script:TxtError.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:TxtError.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
 $script:TxtError.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$script:TxtError.SetBounds(0, 206, $cardW, 24)
+$script:TxtError.SetBounds(0, 234, $cardW, 24)
 $script:TxtError.Visible = $false
 $card.Controls.Add($script:TxtError)
 
@@ -1767,7 +1760,7 @@ if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
 $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$footer1.SetBounds(0, 242, $cardW, 22)
+$footer1.SetBounds(0, 270, $cardW, 22)
 $card.Controls.Add($footer1)
 
 $footer2 = New-Object System.Windows.Forms.Label
@@ -1784,15 +1777,15 @@ $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:LockNotice.ForeColor = [System.Drawing.Color]::FromArgb(255, 96, 96)
 $script:LockNotice.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:LockNotice.Text = (T 'k63') + "`r`n" + (T 'k64')
-$script:LockNotice.SetBounds(0, 292, $cardW, 52)
+$script:LockNotice.SetBounds(0, 318, $cardW, 52)
 $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
-$footer2.SetBounds(0, 266, $cardW, 22)
+$footer2.SetBounds(0, 292, $cardW, 22)
 $card.Controls.Add($footer2)
 
 # ------------------------------------------------------------------ 卡片外面的时钟
-# 时间放在遮罩上（卡片之外），用 JetBrains Mono（没装自动回退系统等宽字体）
-$script:FontClock = Get-MonoFontName
+# 时间放在遮罩上（卡片之外）。整体统一用微软雅黑：等宽字体没有汉字，
+# 交给系统补字会补成宋体，中文看起来很难看。
 $script:ClockTime = New-Object System.Windows.Forms.Label
 $script:ClockTime.AutoSize = $false
 $script:ClockTime.BackColor = [System.Drawing.Color]::Transparent
@@ -1845,10 +1838,10 @@ if ($script:Scale -gt 1.01) {
 
 # 时钟：贴在卡片上方居中排（也要在 DPI 缩放之后再定位，坐标才和卡片对得上）
 $clockW = [int]($card.Width * 1.5)
-$clockH = [int](150 * $script:Scale)
+$clockH = [int](136 * $script:Scale)   # 时间带的高度：调小 = 时间整体再往下靠一点（日期位置不变）
 $dateH = [int](36 * $script:Scale)
 $clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
-$dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
+$dateY = [int]($card.Top - (22 * $script:Scale) - $dateH)   # 别把时钟顶得太靠上
 $timePt = 68
 $timeTop = $dateY - $clockH
 $clockTopLimit = [int](8 * $script:Scale)
@@ -1857,15 +1850,13 @@ if ($timeTop -lt $clockTopLimit) {
     # 免得时钟被顶出屏幕
     $avail = $dateY - $clockTopLimit
     if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
-    $timePt = [Math]::Max(16, [Math]::Round(54 * ($avail / [double]$clockH), 1))
+    $timePt = [Math]::Max(16, [Math]::Round(68 * ($avail / [double]$clockH), 1))
     $clockH = $avail
     $timeTop = $clockTopLimit
 }
 $script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
-# 时间用等宽字体（数字好看）；日期里有汉字，必须用雅黑 —— 等宽字体没有汉字，
-# 交给系统补字会补成宋体，中文看起来会很难看
-$script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
+$script:ClockTime.Font = New-Object System.Drawing.Font($family, [float]$timePt)
 $script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
 
 # 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大

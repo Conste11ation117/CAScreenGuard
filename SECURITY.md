@@ -16,6 +16,11 @@ It *does*:
 
 It deliberately does *not*:
 
+- **record anything you type.** The keyboard hook (`WH_KEYBOARD_LL`) only reads the virtual-key code to
+  decide whether to swallow one of the four shortcuts above; nothing is stored, logged or transmitted,
+  and the file that installs the hook contains no file or registry writes at all.
+- **talk to the network.** There is no HTTP client, socket, telemetry or update check anywhere in the
+  PowerShell script, the C# sources or the installer — the program works entirely offline.
 - lock the Windows session, encrypt the disk, hide running processes, or block network access
 - intercept `Ctrl+Alt+Del` — and it does not need to: nothing on that screen exposes the desktop.
   Sign-out and shutdown end the session (or reboot), so it is never revealed and the flag file records

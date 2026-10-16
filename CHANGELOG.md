@@ -65,6 +65,10 @@ and a wake request that lapsed across sleep/hibernate is now re-issued.
   general "grant write access anywhere" tool; it never touches the password or the configuration — that
   code path does not contain them. If the target folder already holds something, it is still refused: only
   an empty folder we just created is adopted.
+- **The LICENSE now ships with the copies.** MIT requires the copyright and permission notice to travel
+  with the software; the released script has its comments stripped and the `.cs` files never had a
+  copyright header, so an installed copy carried no notice at all. The installer now drops a byte-identical
+  `LICENSE` into the installation folder, and the Setup release package ships it too.
 
 ### Stability
 

@@ -4,7 +4,9 @@
 
 # From the author: what does this software do?
 
-**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any undetectable peeking, theft, or tampering.**
+**Keep your screen out of sight while you are away: it turns the monitor off and covers the desktop with a
+password-protected, wallpaper-backed screen lock — no session lock, no sleep (the machine stays awake), no
+admin rights needed. It stops a passer-by from glancing at your screen; it is not a security boundary.**
 
 *How was this built?*
 

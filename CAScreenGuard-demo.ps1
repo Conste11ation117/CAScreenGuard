@@ -54,7 +54,10 @@ param(
     # 只显示版本与作者，然后退出
     [switch]$Ver,
     # 界面语言：auto = 跟随外部凭证里安装时选的，其次跟随系统；也可以强制 zh / en
-    [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto'
+    [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto',
+    # 不装全局键盘钩子：锁屏期间就不再吞 Win / Alt+Tab / Alt+Esc / Ctrl+Esc（遮罩还在）。
+    # 那个钩子是整个会话级的，机器上若有远程控制／自动化／AI 客户端这类程序，可能互相干扰。
+    [switch]$NoKeyboardHook
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1186,9 +1189,13 @@ function Initialize-SystemState {
     Save-ScreenSaverPrerestore              # 改之前先把原值落盘
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
     try { [ScreenLockNative]::KeepSystemAwake() } catch { }
-    # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露
-    try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
-    try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
+    # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露。
+    # -NoKeyboardHook 时整块跳过：全局低级键盘钩子会让每一次按键都先经过本进程，
+    # 机器上若有远程控制 / 自动化 / AI 客户端这类程序，可能与它互相干扰。
+    if (-not $NoKeyboardHook) {
+        try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
+        try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
+    }
 }
 
 function Restore-SystemState {

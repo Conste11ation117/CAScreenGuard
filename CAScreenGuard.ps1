@@ -12,7 +12,10 @@ param(
     
     [switch]$Ver,
     
-    [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto'
+    [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto',
+    
+    
+    [switch]$NoKeyboardHook
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1145,8 +1148,12 @@ function Initialize-SystemState {
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
     try { [ScreenLockNative]::KeepSystemAwake() } catch { }
     
-    try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
-    try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
+    
+    
+    if (-not $NoKeyboardHook) {
+        try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
+        try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
+    }
 }
 
 function Restore-SystemState {

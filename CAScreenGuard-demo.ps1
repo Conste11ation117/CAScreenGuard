@@ -477,6 +477,47 @@ function New-RoundedPath {
     return $p
 }
 
+function Get-WallpaperBitmap {
+    # 把系统壁纸做成一张"刚好铺满整个虚拟桌面 + 压一层暗色"的位图，给遮罩当背景用。
+    # 任何一步拿不到（纯色壁纸、幻灯片、图片损坏……）都返回 $null，调用方保持纯黑。
+    try {
+        $path = $null
+        try { $path = [ScreenLockNative]::GetDesktopWallpaperPath() } catch { }
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) {
+            # 幻灯片 / 跨屏拼接时 SPI 给的路径常常不可用：退回系统转码出来的那一份
+            $trans = Join-Path $env:APPDATA 'Microsoft\Windows\Themes\TranscodedWallpaper'
+            if (Test-Path -LiteralPath $trans) { $path = $trans }
+        }
+        if (-not $path) { return $null }
+
+        $src = $null
+        try { $src = [System.Drawing.Image]::FromFile($path) } catch { return $null }
+        try {
+            $vw = $script:Form.Bounds.Width
+            $vh = $script:Form.Bounds.Height
+            if ($vw -le 0 -or $vh -le 0 -or $src.Width -le 0 -or $src.Height -le 0) { return $null }
+            $out = New-Object System.Drawing.Bitmap($vw, $vh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $g = [System.Drawing.Graphics]::FromImage($out)
+            try {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                # cover：短边铺满、长边居中裁掉（等价于壁纸设置里的"填充"）
+                $s = [Math]::Max($vw / [double]$src.Width, $vh / [double]$src.Height)
+                $dw = [int][Math]::Ceiling($src.Width * $s)
+                $dh = [int][Math]::Ceiling($src.Height * $s)
+                $g.DrawImage($src, (New-Object System.Drawing.Rectangle([int](($vw - $dw) / 2), [int](($vh - $dh) / 2), $dw, $dh)))
+                # 暗色遮罩：压掉壁纸的亮度，卡片和时钟的对比度才够
+                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 0, 0, 0))
+                $g.FillRectangle($shade, 0, 0, $vw, $vh)
+                $shade.Dispose()
+            }
+            finally { $g.Dispose() }
+            return $out
+        }
+        finally { $src.Dispose() }
+    }
+    catch { return $null }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -1663,6 +1704,13 @@ $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Boun
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
+# 壁纸背景：拿得到就用（已经铺满并压暗），拿不到就保持纯黑
+$script:Wallpaper = Get-WallpaperBitmap
+if ($script:Wallpaper) {
+    $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
+    $script:Form.BackgroundImage = $script:Wallpaper
+}
+
 # 标题行：品牌标记放在标题左边、与标题等高，「图标 + 五个字」作为一个整体居中
 # （先把标题的文字宽度量出来，才能算出这一组的起点）
 $titleText = (T 'k54')
@@ -2109,6 +2157,7 @@ finally {
     $script:AllowClose = $true
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
+    try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   # 壁纸是本地大图，用完即放
     Restore-SystemState        # 无论哪种模式都收尾：点亮屏幕 + 恢复屏保/唤醒设置
     if ($SelfTest) {
         Write-Host ''

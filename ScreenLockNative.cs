@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 public static class ScreenLockNative
@@ -206,6 +207,27 @@ public static class ScreenLockNative
     public static void SetScreenSaverActive(bool active)
     {
         SystemParametersInfoSet(SPI_SETSCREENSAVEACTIVE, active ? 1u : 0u, IntPtr.Zero, 0);
+    }
+
+    // ---------------- desktop wallpaper ----------------
+    // 遮罩背景想用系统壁纸时，先问系统要当前壁纸的文件路径。
+    // 注意：幻灯片、跨屏拼接等模式下这个路径可能指向一个临时/不存在的文件，
+    //       调用方拿不到图时应当退回纯黑，别在这里抛。
+    private const uint SPI_GETDESKWALLPAPER = 0x0073;
+
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfoW", CharSet = CharSet.Unicode)]
+    private static extern bool SystemParametersInfoGetString(uint uiAction, uint uiParam, StringBuilder pvParam, uint fWinIni);
+
+    public static string GetDesktopWallpaperPath()
+    {
+        try
+        {
+            StringBuilder sb = new StringBuilder(1024);
+            if (!SystemParametersInfoGetString(SPI_GETDESKWALLPAPER, (uint)sb.Capacity, sb, 0)) return null;
+            string path = sb.ToString();
+            return string.IsNullOrEmpty(path) ? null : path;
+        }
+        catch { return null; }
     }
 
     // ---------------- IME ----------------

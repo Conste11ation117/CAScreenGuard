@@ -4,7 +4,52 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.1] — 2026-10-15
+## [2.0.0] — 2026-10-16 Eclipse
+
+The lock screen becomes a real screen. This release is about how it looks and feels; the behaviour is
+unchanged.
+
+### New look
+
+- **Wallpaper-backed mask.** The cover is no longer flat black: it reads the current desktop wallpaper
+  (`SPI_GETDESKWALLPAPER`), scales it to cover the whole virtual desktop and dims it, so a blanked screen
+  looks like the lock screen instead of a black rectangle. If the wallpaper cannot be read (solid colour,
+  slideshow, corrupt file) it falls back to plain black, silently, on every launch.
+- **A clock, laid out the way Windows 11 does it.** Large time and date above the card, using Windows 11's
+  measured proportions (digit height 71 DIP, top margin 162 DIP, 32 DIP gap); on small screens it steps the
+  size down instead of overflowing. The card shrank by ~80 px and went back to being centred so it stays
+  clear of the clock.
+- **A proper card.** Rounded corners, the SG brand mark drawn as vectors (no longer decoded from the .ico),
+  and a capsule-shaped password box whose outline shows focus, a wrong password, and the lockout state.
+- **The card is dimmed harder.** One dark layer over the whole screen, a second one over the card itself —
+  so the card is always darker than its surroundings and picks up a hint of the wallpaper instead of being
+  a patch of dead black.
+
+### Polish
+
+- The screen goes dark *first*; the wallpaper is composited and painted a second later, so you never catch
+  it mid-draw. The mask is double-buffered.
+- Unlocking fades the mask out (~0.7 s, ease-out) and then restores the display; blanking again stays
+  immediate.
+- The lockout notice replaces the two hotkey lines instead of reserving dead space, which let the card
+  shrink by ~80 px and sit centred again.
+- The dimming went one notch deeper (about 45% → 31% brightness): the wallpaper is still there, but it sits
+  back and the clock and card read more clearly.
+- Chinese text is now uniformly Microsoft YaHei. The clock used to ask for JetBrains Mono, which has no
+  CJK glyphs — Windows substituted SimSun for every Chinese character.
+
+### Fixed
+
+- The brand mark stayed opaque in wallpaper mode; `Rfc2898DeriveBytes` was never disposed; when the idle
+  query failed the mask fought for focus on every tick; the marker write condition was too brittle.
+- Six duplicated blocks merged (new-password validation, dialog DPI, font constants, card positioning,
+  primary-screen size, external-credential cleanup).
+- P/Invoke signatures corrected; the keyboard hook now defends against a null pointer.
+- The icon was redrawn: only the two large letters **SG** remain inside the black square — the product name
+  and the key are gone, because both turned into mush below 48 px. Small frames are now written as BMP,
+  which stops .NET/GDI from decoding PNG frames into colour noise.
+
+## [1.1.0] — 2026-10-15
 
 A full review pass over the codebase, plus a correction to how `Ctrl+Alt+Del` was described.
 
@@ -136,7 +181,7 @@ First public release.
 ### Bilingual UI & version number
 
 - Both the main program and the installer ship with Chinese and English UI text built in. Language priority: command-line `-Lang` > chosen at install time > system display language.
-- All popup window titles include the version number, e.g. `CAScreenGuard V1.0.1 · Configuration needs to be rebuilt`.
+- All popup window titles include the version number, e.g. `CAScreenGuard V2.0.0 · Configuration needs to be rebuilt`.
 
 ### Icon
 
@@ -166,5 +211,6 @@ First public release.
 - Anyone who can modify the program can bypass it (swap the script, or just kill the process); elevating privileges would only block "a non-elevated process cannot kill it" — at the cost of a UAC prompt every launch, higher antivirus sensitivity, and a larger attack surface — which is not worth it for the goal of "stopping a passer-by from glancing at your screen".
 - Known not to block: user-initiated Sleep, lid close (if lid close is set to Sleep in power settings), and a sign-out / shutdown started from the `Ctrl+Alt+Del` screen (they end the session rather than revealing it).
 
-[1.0.1]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.0.1
+[2.0.0]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v2.0.0
+[1.1.0]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.0.0

@@ -12,13 +12,25 @@
 
 A tiny Windows tool that keeps an eye on your screen while you are away: it turns the monitor off
 (**only the monitor** — no sleep, no session lock, the machine stays awake), covers everything with a
-full-screen black mask, and only the correct unlock password brings the screen back.
+full-screen mask, and only the correct unlock password brings the screen back.
 
-- Version: **V1.0.1**
+That mask is backed by your own desktop wallpaper (dimmed and stretched over the whole screen; it falls
+back to plain black when the wallpaper cannot be read), with the time and date above the card laid out
+the way Windows 11 lays out its lock screen — so a blanked screen looks like the lock screen rather than
+a black rectangle. Your desktop never shows through.
+
+- Version: **V2.0.0**
 - Author: **@Conste11ation117**
 - Requirements: Windows 10 / 11 with Windows PowerShell 5.1 (built in — nothing to install)
 - License: [MIT](LICENSE)
 - Not affiliated with JetBrains. The icon style is a homage to their icon family.
+
+![Lock screen](docs/lock-screen.en.jpg)
+
+*What a blanked screen looks like: the wallpaper, dimmed, with the time and date above it (laid out to
+Windows 11's proportions) and the password card in the middle. The screen goes dark first and the
+wallpaper is composited afterwards, so you never catch it mid-draw; unlocking fades the mask out over
+about 0.7 s.*
 
 ![Rebuild dialog](docs/rebuild-dialog.en.png)
 
@@ -69,12 +81,28 @@ If you need confidentiality, use Windows lock (`Win+L`) plus BitLocker.
 | Action | Behaviour |
 |---|---|
 | Any key / mouse move | Lights the screen, reveals the password box (the desktop stays covered) |
-| Unlock password + `Enter` | Unlock: restores the screen, restores your screen-saver settings, exits |
+| Unlock password + `Enter` | Unlock: the mask fades out (~0.7 s) → restores the screen, restores your screen-saver settings, exits |
 | `Ctrl + Backspace` (or `Ctrl + U`) | Clear what you typed |
 | `Esc` | Blank again immediately (typed text kept) |
 | 25 s idle (configurable) | Blanks again automatically (typed text kept) |
 | `Ctrl + Shift + Alt + E` | Open "Change unlock password" (asks for the authorization code); stays locked afterwards |
 | `Win` / `Alt+Tab` / `Alt+Esc` / `Ctrl+Esc` | **Swallowed**, so nobody can peek through the Start menu or task-switcher thumbnails |
+
+**What the locked screen looks like** (see the screenshot at the top):
+
+- **Wallpaper-backed.** At startup it reads the current desktop wallpaper (`SPI_GETDESKWALLPAPER`) and
+  scales it to cover the whole virtual desktop, then dims it. A solid-colour wallpaper, a slideshow or a
+  corrupt file means no image — it falls back to the plain black mask, silently, decided on every launch.
+- **Time and date**, placed above the card using Windows 11's measured proportions (digit height 71 DIP,
+  top margin 162 DIP, 32 DIP between the two lines). On a short screen it steps the size down instead of
+  overflowing.
+- **The card is dimmed harder** than the rest: one dark layer over the whole screen, another over the card,
+  so the card is always darker than its surroundings and the text stays legible.
+- The wallpaper is only composited and painted *after* the screen has gone dark, so you never see it being
+  drawn from top to bottom.
+- The backdrop is your own wallpaper — the same picture anyone would see after unlocking, so it leaks
+  nothing new. If you would rather not have it there, set a solid-colour desktop background and the
+  program falls back to black.
 
 **Lockout.** Eight wrong unlock passwords disable further input; the screen then says
 "Password entry is disabled" plus "Power off using the physical power button, or press Ctrl+Alt+Del and

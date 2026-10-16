@@ -34,17 +34,12 @@ jobs:
           zip -r "CAScreenGuard-${GITHUB_REF_NAME}-all.zip" $FILES
           unzip -l "CAScreenGuard-${GITHUB_REF_NAME}-all.zip"
 
-      - name: Pull this version's notes out of CHANGELOG.md
+      - name: 用整份 CHANGELOG 当 Release 正文
         run: |
           set -e
-          awk -v v="$GITHUB_REF_NAME" '
-            index($0, "## [" substr(v,2) "]") == 1 { f = 1; next }
-            f && (substr($0,1,3) == "## " || substr($0,1,1) == "[") { exit }
-            f { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            printf 'Release %s\n' "$GITHUB_REF_NAME" > release-notes.md
-          fi
+          # 与 v1.0.0 那份手改的正文保持同一格式：第一行 "# Changelog-EN"，后面接整份英文变更记录。
+          # tail -n +2 丢掉文件自己的 H1（连同 BOM）。
+          { printf '# Changelog-EN\n\n'; tail -n +2 CHANGELOG.md; } > release-notes.md
           wc -l release-notes.md
 
       - name: Publish the release
@@ -52,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          TITLE="CAScreenGuard $GITHUB_REF_NAME"
+          TITLE="$GITHUB_REF_NAME Navigator"        # 与 v1.0.0 的 "v1.0.0 Navigator" 保持同一命名
           # 重推同一个标签（比如重写了历史）时，直接在原来那份 Release 上更新，
           # 别再 create 一次 —— 否则 gh 会报 "already exists"，Actions 上就是个红叉。
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

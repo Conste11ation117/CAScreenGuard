@@ -1,8 +1,9 @@
 ﻿# 生成 CAScreenGuard.ico
-# 画风参考 JetBrains 产品图标：两张倾斜的彩色圆角方块叠着，中间压一个黑色方块，
-# 里面两个大字母 + 下面一行小字。
-#   ≥64px：黑方块里是「SG」+ 产品名 CAScreenGuard（JetBrains Mono）
-#   <64px ：产品名会糊成一团，改用参考图里那根白色短横线
+# 画风参考 JetBrains 产品图标：两张倾斜的彩色圆角方块叠着，中间压一个黑色方块。
+#   黑方块里只放居中的「SG」两个大字母 —— 其余元素（产品名、钥匙）在小尺寸下都会糊成一团，
+#   索性去掉，让图标在 16px 也能一眼认出来。
+#   ≥48px：黑方块里是居中的「SG」（JetBrains Mono，没装则回退系统中文字体里的等宽字体）
+#   <48px ：两个字母已经看不清了，改用一根短横线
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
@@ -13,10 +14,17 @@ $tmp = $env:TEMP
 
 $COLOR_BACK  = [System.Drawing.Color]::FromArgb(255, 47, 168, 248)    # 青蓝
 $COLOR_FRONT = [System.Drawing.Color]::FromArgb(255, 124, 77, 255)    # 紫
-$FONT_MAIN   = 'JetBrains Mono'  # 两个大字母（用户要求与产品名统一用 JetBrains Mono）
-$FONT_NAME   = 'JetBrains Mono'  # 产品名（装了就等宽，没装自动回退）
-$COLOR_NAME  = [System.Drawing.Color]::FromArgb(255, 135, 206, 235)   # 产品名：天蓝
-$COLOR_LOCK  = [System.Drawing.Color]::FromArgb(255, 168, 174, 186)   # 锁：灰
+
+# 字体：优先 JetBrains Mono，没装就退回系统自带的等宽字体
+function Test-FontInstalled([string]$Name) {
+    foreach ($f in [System.Drawing.FontFamily]::Families) { if ($f.Name -eq $Name) { return $true } }
+    return $false
+}
+$FONT_MAIN = 'Segoe UI'
+foreach ($cand in @('JetBrains Mono', 'Cascadia Mono', 'Consolas', 'Lucida Console')) {
+    if (Test-FontInstalled $cand) { $FONT_MAIN = $cand; break }
+}
+Write-Host ('  使用字体：' + $FONT_MAIN)
 
 function New-RoundRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
     $p = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -27,45 +35,6 @@ function New-RoundRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
     $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
     $p.CloseFigure()
     return $p
-}
-
-function Draw-Key([System.Drawing.Graphics]$g, [float]$f, [float]$bx, [float]$side) {
-    # 钥匙画在「SG」右侧那一竖条里：细杆朝上，底部是一个圆角握柄（不用圆环，圆环太占视觉空间），
-    # 杆的上半段右侧开两枚齿。
-    $pad = $f * 0.030
-    $rx = $bx + $side * 0.585 + $pad
-    $ry = $bx + $pad
-    $rw = ($bx + $side) - $pad - $rx
-    $rh = ($f * 0.560) - $pad - $ry
-    if ($rw -le 0 -or $rh -le 0) { return }
-    $cx = $rx + $rw / 2
-    $brush = New-Object System.Drawing.SolidBrush $COLOR_LOCK
-
-    # 握柄：底部一块近方形圆角矩形 + 中间一个方形小孔（不是圆环：圆环占地方且小尺寸下糊成一团）
-    $hh = $rw * 0.52
-    $hw = $rw * 0.74
-    $hy = $ry + $rh - $hh
-    $head = New-RoundRect ([float]($cx - $hw / 2)) ([float]$hy) ([float]$hw) ([float]$hh) ([float]($hh * 0.26))
-    $g.FillPath($brush, $head)
-    $holeS = $hh * 0.46
-    $hole = New-RoundRect ([float]($cx - $holeS / 2)) ([float]($hy + ($hh - $holeS) / 2)) ([float]$holeS) ([float]$holeS) ([float]($holeS * 0.26))
-    # 孔用"挖空"的方式画：孔的底色就是内层黑方块
-    $g.FillPath([System.Drawing.Brushes]::Black, $hole)
-    $hole.Dispose()
-
-    # 杆：从握柄上沿一路伸到顶端，顶端再收一个圆角（止于握柄，别压住握柄上的孔）
-    $sw = $rw * 0.22
-    $top = $ry + $sw * 0.5
-    $bottom = $hy + $hh * 0.12
-    $body = New-RoundRect ([float]($cx - $sw / 2)) ([float]($top - $sw * 0.5)) ([float]$sw) ([float]($bottom - $top + $sw)) ([float]($sw * 0.48))
-    $g.FillPath($brush, $body)
-
-    # 齿：杆右侧两枚，越往上越短（读起来像钥匙而不是梳子）
-    $t1 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.17)) ([float]($sw * 0.95)) ([float]($sw * 0.52)) ([float]($sw * 0.16))
-    $t2 = New-RoundRect ([float]($cx + $sw * 0.30)) ([float]($ry + $rh * 0.36)) ([float]($sw * 0.62)) ([float]($sw * 0.44)) ([float]($sw * 0.14))
-    $g.FillPath($brush, $t1)
-    $g.FillPath($brush, $t2)
-    $t1.Dispose(); $t2.Dispose(); $head.Dispose(); $body.Dispose(); $brush.Dispose()
 }
 
 function Draw-Icon([int]$S, [switch]$Small) {
@@ -98,58 +67,42 @@ function Draw-Icon([int]$S, [switch]$Small) {
     $side = $f * 0.62
     $bx = ($f - $side) / 2
     $by = ($f - $side) / 2
-    $black = New-RoundRect $bx $by $side $side ($f * 0.022)
+    $black = New-RoundRect $bx $by $side $side ($f * 0.055)
     $g.FillPath([System.Drawing.Brushes]::Black, $black)
 
-    # ---- 两个大字母 + 产品名：都靠左上角排 ----
-    $sfCenter = New-Object System.Drawing.StringFormat
-    $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
-    $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Near
-    $sfLeft = New-Object System.Drawing.StringFormat
-    $sfLeft.Alignment = [System.Drawing.StringAlignment]::Near
-    $sfLeft.LineAlignment = [System.Drawing.StringAlignment]::Near
-    $pad = $f * 0.042
-    $x0 = $bx + $pad
-
-    $sgSize = $f * 0.250
-    $fontSG = New-Object System.Drawing.Font($FONT_NAME, [float]$sgSize, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-    $rectSG = New-Object System.Drawing.RectangleF $x0, ($by + $pad - $f * 0.018), ($side - $pad * 2), ($f * 0.40)
-    $g.DrawString('SG', $fontSG, [System.Drawing.Brushes]::White, $rectSG, $sfLeft)
-    $fontSG.Dispose()
+    $sfMiddle = New-Object System.Drawing.StringFormat
+    $sfMiddle.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfMiddle.LineAlignment = [System.Drawing.StringAlignment]::Center
 
     if (-not $Small) {
-        # 产品名：JetBrains Mono，放在参考图里那根横线的位置（黑方块下三分之一处）
-        $nameSize = $f * 0.058
-        $fontName = New-Object System.Drawing.Font($FONT_NAME, [float]$nameSize, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-        $rectName = New-Object System.Drawing.RectangleF $bx, ($f * 0.620), $side, ($f * 0.14)
-        $nameBrush = New-Object System.Drawing.SolidBrush $COLOR_NAME
-        $g.DrawString('CAScreenGuard', $fontName, $nameBrush, $rectName, $sfCenter)
-        $nameBrush.Dispose()
-        $fontName.Dispose()
-        Draw-Key $g $f $bx $side
+        # 两个大字母：水平垂直都居中，撑满黑方块
+        $sgSize = $f * 0.30
+        $fontSG = New-Object System.Drawing.Font($FONT_MAIN, [float]$sgSize, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+        $rectSG = New-Object System.Drawing.RectangleF $bx, $by, $side, $side
+        $g.DrawString('SG', $fontSG, [System.Drawing.Brushes]::White, $rectSG, $sfMiddle)
+        $fontSG.Dispose()
     }
     else {
-        # 小尺寸：用参考图里那根白色短横线代替产品名
-        $barW = $f * 0.28
-        $barH = [Math]::Max([float]($f * 0.052), 1.0)
-        $bar = New-RoundRect (($f - $barW) / 2) ($f * 0.665) $barW $barH ([Math]::Min($barH / 2, $f * 0.02))
+        # 小尺寸：两个字母已经看不清，用一根短横线代替
+        $barW = $f * 0.34
+        $barH = [Math]::Max([float]($f * 0.055), 1.0)
+        $bar = New-RoundRect (($f - $barW) / 2) (($f - $barH) / 2) $barW $barH ([Math]::Min($barH / 2, $f * 0.02))
         $g.FillPath([System.Drawing.Brushes]::White, $bar)
         $bar.Dispose()
-        Draw-Key $g $f $bx $side
     }
 
-    $black.Dispose(); $sfLeft.Dispose(); $sfCenter.Dispose(); $g.Dispose()
+    $black.Dispose(); $sfMiddle.Dispose(); $g.Dispose()
     return $bmp
 }
 
-# 两版底图：大字版（带产品名）给 128/256 用；小图版（只带短横线）给更小的尺寸缩着用
+# 两版底图：大字版（居中 SG）给 48/64/128/256 用；小图版（一根短横线）给更小的尺寸缩着用
 $masterBig = Draw-Icon 256
 $masterSmall = Draw-Icon 256 -Small
 $masterBig.Save((Join-Path $tmp 'cg_icon_256.png'), [System.Drawing.Imaging.ImageFormat]::Png)
 $masterSmall.Save((Join-Path $tmp 'cg_icon_256_small.png'), [System.Drawing.Imaging.ImageFormat]::Png)
 
 function Get-Frame([int]$s) {
-    if ($s -ge 128) { return (Draw-Icon $s) }
+    if ($s -ge 48) { return (Draw-Icon $s) }
     $b = New-Object System.Drawing.Bitmap($s, $s, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($b)
     $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic

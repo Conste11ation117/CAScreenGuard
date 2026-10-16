@@ -262,6 +262,15 @@ $script:FlagPath = Join-Path $script:StateDir 'running.flag'
 
 $script:PresavePath = Join-Path $script:StateDir 'screen-saver-original.json'
 
+
+
+$script:GuardLogPath = Join-Path $script:StateDir 'guard.log'
+
+
+$script:LastAwakeTick = [datetime]::MinValue
+$script:StartedAt = Get-Date          
+$script:LastTickWall = Get-Date
+
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
     try {
@@ -346,6 +355,31 @@ function Write-TickError {
     } catch { }
 }
 
+function Write-GuardLog {
+    
+    
+    
+    
+    param([string]$Message)
+    try {
+        if ([string]::IsNullOrEmpty($Message)) { return }
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        if (Test-Path -LiteralPath $script:GuardLogPath) {
+            if ((Get-Item -LiteralPath $script:GuardLogPath -Force).Length -gt 65536) {
+                $all = [System.IO.File]::ReadAllText($script:GuardLogPath)
+                $keep = $all.Length - 32768
+                if ($keep -lt 0) { $keep = 0 }
+                [System.IO.File]::WriteAllText($script:GuardLogPath,
+                    ("--- 日志超过 64KB，已截断，以下为最近部分 ---`r`n" + $all.Substring($keep)),
+                    (New-Object System.Text.UTF8Encoding($false)))
+            }
+        }
+        [System.IO.File]::AppendAllText($script:GuardLogPath,
+            ((Get-Date).ToString('s') + '  ' + $Message + "`r`n"),
+            (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Test-PreviousSession {
     
     if (-not (Test-Path -LiteralPath $script:FlagPath)) { return $null }
@@ -371,6 +405,24 @@ trap {
     catch { }
     exit 1
 }
+
+
+
+
+
+
+
+try {
+    [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+    [System.Windows.Forms.Application]::add_ThreadException({
+        param($sender, $e)
+        try { Write-GuardLog ('界面线程异常（已兜住，继续运行）：' + $e.Exception.GetType().Name + ' - ' + $e.Exception.Message) } catch { }
+    })
+    [AppDomain]::CurrentDomain.add_UnhandledException({
+        param($sender, $e)
+        try { Write-GuardLog ('非界面线程异常：' + $e.ExceptionObject.GetType().Name + ' - ' + $e.ExceptionObject.Message) } catch { }
+    })
+} catch { }
 
 
 $script:LastTickError = ''
@@ -1063,6 +1115,33 @@ function Invoke-GuardTick {
     try {
         if ($script:AllowClose) { return }
         $now = Get-Date
+
+        
+        
+        
+        $gap = ($now - $script:LastTickWall).TotalSeconds
+        if ($gap -gt 5) {
+            Write-GuardLog ('定时器中断 {0:N1} 秒，按"可能刚从睡眠/休眠恢复"处理：重新保持唤醒并复位遮罩' -f $gap)
+            try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
+            $script:LastAwakeTick = $now
+            try { [ScreenLockNative]::ReassertTopMost($script:Form.Handle) } catch { }
+            if ($script:State -eq 'Away') {
+                $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
+                $script:LastBlankSent = $now
+                try { [ScreenLockNative]::MonitorOff() } catch { }
+            }
+        }
+        $script:LastTickWall = $now
+
+        
+        
+        if (($now - $script:LastAwakeTick).TotalSeconds -ge 30) {
+            $script:LastAwakeTick = $now
+            $awakeOk = $false
+            try { $awakeOk = [ScreenLockNative]::KeepSystemAwake() } catch { $awakeOk = $false }
+            if (-not $awakeOk) { Write-GuardLog '唤醒请求重发失败（SetThreadExecutionState 返回 0）' }
+        }
+
         $idle = [uint32][ScreenLockNative]::GetIdleMilliseconds()
 
         if ($script:State -eq 'Away') {
@@ -1146,7 +1225,10 @@ function Initialize-SystemState {
     catch { $script:OrigScreenSaverReg = $null }
     Save-ScreenSaverPrerestore              
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
-    try { [ScreenLockNative]::KeepSystemAwake() } catch { }
+    
+    
+    try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
+    $script:LastAwakeTick = Get-Date
     
     
     
@@ -1195,7 +1277,7 @@ function Restore-SystemState {
     }
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
-    try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
+    try { $null = [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 
 
@@ -2157,6 +2239,14 @@ if ($SelfTest) {
 
 
 try {
+    
+    $runMode = '熄屏锁屏'
+    if ($SelfTest) { $runMode = '自检' }
+    elseif ($script:AutoReset) { $runMode = '改密码' }
+    $hookState = '开'
+    if ($NoKeyboardHook) { $hookState = '关' }
+    Write-GuardLog ('启动：版本 ' + $script:AppVersion + '，Lang=' + $script:Lang + '，模式=' + $runMode + '，键盘钩子=' + $hookState)
+
     if (-not $SelfTest) { Initialize-SystemState }
 
     $script:Form.Show()
@@ -2202,6 +2292,7 @@ catch {
 
     if (-not $SelfTest) { $null = Write-CrashLog -ErrorRecord $_ -Where 'run' }
     try { $script:SelfTestFailed = $true } catch { }
+    Write-GuardLog ('异常退出：' + $_.Exception.GetType().Name + ' - ' + $msg)
     try {
         [System.Windows.Forms.MessageBox]::Show($msg, (T 'k58'), 'OK', 'Error') | Out-Null
     }
@@ -2214,6 +2305,8 @@ finally {
     try { $script:Form.Dispose() } catch { }
     try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   
     Restore-SystemState        
+    
+    try { Write-GuardLog ('退出：存活 ' + [int]((Get-Date) - $script:StartedAt).TotalSeconds + ' 秒') } catch { }
     if ($SelfTest) {
         Write-Host ''
         Write-Host '================ CAScreenGuard 自检结果 ================'

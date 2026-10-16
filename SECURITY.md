@@ -2,7 +2,8 @@
 
 ## What this project is (and is not)
 
-Meta-positioning：Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any /undetectable peeking, theft, or tampering.
+Meta-positioning: keep long-running workflows going while the PC is unattended, and protect your
+ongoing work and private files from any undetectable peeking, theft, or tampering.
 
 CAScreenGuard is a **visual privacy barrier for an unattended screen**. It is *not* a security boundary.
 

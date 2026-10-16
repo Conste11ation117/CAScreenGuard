@@ -59,6 +59,14 @@ A full review pass over the codebase, plus a correction to how `Ctrl+Alt+Del` wa
 - The release workflow's file list is verified against `git ls-files`, so a new file cannot be
   silently dropped from the zip.
 
+### Packaging
+
+- Each release now ships two zips, both with a single top-level folder inside:
+  `CAScreenGuard-All.zip` (the whole project) and `CAScreenGuard-Setup-windows-x86.zip`
+  (installer + icon + the two READMEs, for a machine that only needs to install it).
+- Release bodies carry the full English changelog, and the release title follows the
+  `v<version> Navigator` naming.
+
 ### Docs
 
 - Corrected the runtime state path, the offline package name, and the missing `-Ver` entry.

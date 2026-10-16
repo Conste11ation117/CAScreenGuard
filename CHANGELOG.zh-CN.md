@@ -47,6 +47,13 @@
 - 无图标重试后也检查退出码；`#Requires` 改成大小写敏感匹配。
 - 发版 workflow 的打包清单会与 `git ls-files` 核对，新增文件不会再被悄悄漏掉。
 
+### 打包
+
+- 每个 Release 提供两个压缩包，里面都套一层与包同名的文件夹：
+  `CAScreenGuard-All.zip`（整份工程）与 `CAScreenGuard-Setup-windows-x86.zip`
+  （安装器 + 图标 + 两份 README，给"只想装一下"的机器）。
+- Release 正文改为整份英文变更记录，标题沿用 `v<版本> Navigator` 的命名。
+
 ### 文档
 
 - 修正运行时状态目录路径、离线包文件名，补上漏掉的 `-Ver`。

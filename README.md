@@ -27,10 +27,16 @@ to confirm with the authorization code before setting a new unlock password. The
 state **after three wrong codes** — every input is greyed out, only "Quit" is left, and the block has been
 written to disk, so reopening the program will not lift it.*
 
-**How to get it:** `git clone` this repository, or grab `CAScreenGuard-Setup.exe` from
-[Releases](https://github.com/Conste11ation117/CAScreenGuard/releases) (the file in the repo is the same one).
-Double-click the wizard and you are done in about two minutes. The release also ships
-`CAScreenGuard-v1.0.1-all.zip` — the same package, for copying to a machine offline.
+**How to get it:** `git clone` this repository, or download from
+[Releases](https://github.com/Conste11ation117/CAScreenGuard/releases) — the `CAScreenGuard-Setup.exe`
+in the repo is the same file. Double-click the wizard and you are done in about two minutes.
+
+Each release ships two zips, so you can pick the smallest thing that does the job:
+
+- **`CAScreenGuard-Setup-windows-x86.zip`** — just the installer, the icon and the two READMEs, for a
+  machine that only needs to install it
+- **`CAScreenGuard-All.zip`** — the whole project (sources, installer, docs, screenshots), for copying
+  to a machine offline
 
 ---
 

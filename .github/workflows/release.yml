@@ -19,9 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the zip from this tag
+      - name: 打两个包：All 与 Setup-windows-x86
         run: |
           set -e
+          # All：整份工程（源码、安装器、文档、截图）—— 与本地 CAScreenGuard-All\ 一致
           FILES=".gitattributes .gitignore build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CHANGELOG.md CHANGELOG.zh-CN.md Installer.cs LICENSE make-icon.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png"
           # 清单是手写的，很容易漏：漏了就在这里失败，别偷偷少发东西
           for f in $(git ls-files); do
@@ -31,8 +32,20 @@ jobs:
               *) echo "ERROR: $f 不在打包清单里"; exit 1 ;;
             esac
           done
-          zip -r "CAScreenGuard-${GITHUB_REF_NAME}-all.zip" $FILES
-          unzip -l "CAScreenGuard-${GITHUB_REF_NAME}-all.zip"
+          rm -f CAScreenGuard-All.zip CAScreenGuard-Setup-windows-x86.zip
+          # 两个包都套一层与包同名的文件夹 —— 与本地那两个 zip 的结构保持一致
+          rm -rf pkg
+          mkdir -p pkg/CAScreenGuard-All pkg/CAScreenGuard-Setup-windows-x86
+          # All：整份工程
+          for f in $FILES; do
+            mkdir -p "pkg/CAScreenGuard-All/$(dirname "$f")"
+            cp "$f" "pkg/CAScreenGuard-All/$f"
+          done
+          # Setup-windows-x86：给"只想装一下"的人
+          cp CAScreenGuard-Setup.exe CAScreenGuard.ico README.md README.zh-CN.md pkg/CAScreenGuard-Setup-windows-x86/
+          (cd pkg && zip -r ../CAScreenGuard-All.zip CAScreenGuard-All && zip -r ../CAScreenGuard-Setup-windows-x86.zip CAScreenGuard-Setup-windows-x86)
+          unzip -l CAScreenGuard-All.zip
+          unzip -l CAScreenGuard-Setup-windows-x86.zip
 
       - name: 用整份 CHANGELOG 当 Release 正文
         run: |
@@ -52,10 +65,11 @@ jobs:
           # 别再 create 一次 —— 否则 gh 会报 "already exists"，Actions 上就是个红叉。
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file release-notes.md
-            gh release upload "$GITHUB_REF_NAME" CAScreenGuard-*-all.zip --clobber
+            gh release upload "$GITHUB_REF_NAME" CAScreenGuard-All.zip CAScreenGuard-Setup-windows-x86.zip --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
-              CAScreenGuard-*-all.zip \
+              CAScreenGuard-All.zip \
+              CAScreenGuard-Setup-windows-x86.zip \
               --title "$TITLE" \
               --notes-file release-notes.md
           fi

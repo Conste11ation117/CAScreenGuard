@@ -24,8 +24,12 @@
 图里是**连错三次之后的封禁态** —— 输入全部置灰，只留「退出」，封禁已落盘，重开程序也不会解除。*
 
 **怎么拿到它**：`git clone` 本仓库，或者到 [Releases](https://github.com/Conste11ation117/CAScreenGuard/releases)
-下载 `CAScreenGuard-Setup.exe`（仓库里那份是同一个文件）。双击安装向导，两分钟装完。
-Release 里另外提供一份 `CAScreenGuard-v1.0.1-all.zip`，是同一个包，方便离线拷走。
+下载 —— 仓库里那份 `CAScreenGuard-Setup.exe` 就是同一个文件。双击安装向导，两分钟装完。
+
+每个 Release 提供两个压缩包，按需要挑最小的那个用：
+
+- **`CAScreenGuard-Setup-windows-x86.zip`** —— 只含安装器、图标和两份 README，给"只想装一下"的机器
+- **`CAScreenGuard-All.zip`** —— 整份工程（源码、安装器、文档、截图），方便离线拷走
 
 ---
 ## 零、元定位

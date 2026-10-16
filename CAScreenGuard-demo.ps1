@@ -1681,12 +1681,6 @@ $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Boun
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
-# 顶部品牌条：取自图标的青蓝色，让黑屏上的卡片一眼认得出是 CAScreenGuard
-$accent = New-Object System.Windows.Forms.Panel
-$accent.BackColor = [System.Drawing.Color]::FromArgb(47, 168, 248)
-$accent.SetBounds(0, 0, $cardW, 4)
-$card.Controls.Add($accent)
-
 # 品牌标记：直接用代码画那两块倾斜的彩块（与程序图标同源，但不依赖 .ico 解码，
 # 任何 DPI 下都是矢量级清晰）
 $logoMark = New-Object System.Windows.Forms.Panel
@@ -1851,11 +1845,11 @@ if ($script:Scale -gt 1.01) {
 
 # 时钟：贴在卡片上方居中排（也要在 DPI 缩放之后再定位，坐标才和卡片对得上）
 $clockW = [int]($card.Width * 1.5)
-$clockH = [int](118 * $script:Scale)
-$dateH = [int](34 * $script:Scale)
+$clockH = [int](150 * $script:Scale)
+$dateH = [int](36 * $script:Scale)
 $clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
 $dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
-$timePt = 54
+$timePt = 68
 $timeTop = $dateY - $clockH
 $clockTopLimit = [int](8 * $script:Scale)
 if ($timeTop -lt $clockTopLimit) {
@@ -1869,8 +1863,10 @@ if ($timeTop -lt $clockTopLimit) {
 }
 $script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
+# 时间用等宽字体（数字好看）；日期里有汉字，必须用雅黑 —— 等宽字体没有汉字，
+# 交给系统补字会补成宋体，中文看起来会很难看
 $script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
-$script:ClockDate.Font = New-Object System.Drawing.Font($script:FontClock, [float]13)
+$script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
 
 # 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
 $cardR = [int](18 * $script:Scale)

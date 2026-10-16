@@ -42,10 +42,10 @@ foreach ($f in @($demoPath, $earlyPath, $nativePath, $instCsPath)) {
     $body = New-Object byte[] ($bytes.Length - $i)
     [Array]::Copy($bytes, $i, $body, 0, $body.Length)
     # 严格解码：不是合法 UTF-8 就当场报错。用带替换字符的宽松解码会把源文件
-        # 就地写坏（中文变成 U+FFFD 再也回不来），而这一步正是要"补 BOM"，很容易被忽视。
-        $strict = New-Object System.Text.UTF8Encoding($false, $true)
-        try { $text = $strict.GetString($body) }
-        catch { throw ('源文件不是合法的 UTF-8（可能是 ANSI/GBK）：' + $f + '。先转成 UTF-8 再打包，不要让它被就地改坏。') }
+    # 就地写坏（中文变成 U+FFFD 再也回不来），而这一步正是要"补 BOM"，很容易被忽视。
+    $strict = New-Object System.Text.UTF8Encoding($false, $true)
+    try { $text = $strict.GetString($body) }
+    catch { throw ('源文件不是合法的 UTF-8（可能是 ANSI/GBK）：' + $f + '。先转成 UTF-8 再打包，不要让它被就地改坏。') }
     $text = ($text -split "`r?`n") -join "`r`n"
     $bodyOut = [System.Text.Encoding]::UTF8.GetBytes($text)
     $fixed = New-Object byte[] ($bodyOut.Length + 3)

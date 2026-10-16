@@ -413,6 +413,8 @@ trap {
 
 # ------------------------------------------------------------------ 状态与常量
 $script:LastTickError = ''
+# 界面字体统一用雅黑：等宽字体没有汉字，交给系统补字会补成宋体，中文很难看
+$script:UiFamily = 'Microsoft YaHei UI'
 $script:Scale = 1.0             # 屏幕缩放比（DPI/96）：把布局按 DPI 放大，字才不糊也不小
 try { $dpiNow = [ScreenLockEarly]::GetDpiForSystem(); if ($dpiNow -gt 0) { $script:Scale = $dpiNow / 96.0 } } catch { }
 $script:DlgOpen = $false          # 「修改密码」窗口开着时，暂停止顶与抢焦点
@@ -545,7 +547,10 @@ function Install-WallpaperBackground {
         } catch { }
         $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
         $script:Form.BackgroundImage = $script:Wallpaper
+        # 卡片改成透明让背景图透出来；卡片上那块品牌标记也得跟着透明，
+        # 否则它还是原来那块实色，会在卡片里留下一个小方块
         $card.BackColor = [System.Drawing.Color]::Transparent
+        try { $logoMark.BackColor = [System.Drawing.Color]::Transparent } catch { }
         if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
     } catch { }
 }
@@ -652,7 +657,9 @@ function Set-AuthLockedUI {
         Show-LockNotice
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
-            elseif ($c -is [System.Windows.Forms.Button] -and $c.Text -ne (T 'k19') -and $c.Text -ne (T 'k39')) {
+            # 「取消/退出」那颗按钮要留着让人能关窗。这里按 Tag 认角色，
+            # 不比按钮文字 —— 文字会随语言变，比错就会把"退出"一起锁死。
+            elseif ($c -is [System.Windows.Forms.Button] -and $c.Tag -ne 'dismiss') {
                 $c.Enabled = $false
                 $c.BackColor = [System.Drawing.Color]::FromArgb(214, 216, 220)
                 $c.ForeColor = [System.Drawing.Color]::FromArgb(150, 152, 156)
@@ -673,8 +680,9 @@ function Test-AuthCode {
         $iterations = 120000
         if ($Source.authIterations) { $iterations = [int]$Source.authIterations }
         $salt = [Convert]::FromBase64String($Source.authSalt)
+        # Rfc2898DeriveBytes 持有非托管资源：用完必须 Dispose（三处派生都要）
         $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($code, $salt, $iterations)
-        $actual = $derive.GetBytes(32)
+        try { $actual = $derive.GetBytes(32) } finally { $derive.Dispose() }
         $expect = [Convert]::FromBase64String($Source.authHash)
         if ($actual.Length -ne $expect.Length) { return $false }
         $diff = 0
@@ -694,6 +702,38 @@ function Test-PlainAscii {
         if (($code -lt 33) -or ($code -gt 126)) { return $false }
     }
     return $true
+}
+
+function Test-NewPasswordInput {
+    # 「修改解锁密码」和「配置重建」两个窗口用的是同一套新密码校验，区别只在提示文案的键名。
+    # 返回 Message（空串 = 通过）和 Field（出错该把焦点放哪个输入框：1=第一个，2=确认框）
+    param([string]$First, [string]$Second, [string]$KeyTooShort, [string]$KeyNotAscii, [string]$KeyMismatch)
+    if ($First.Length -lt 4) { return [pscustomobject]@{ Message = (T $KeyTooShort); Field = 1 } }
+    if (-not (Test-PlainAscii $First)) { return [pscustomobject]@{ Message = (T $KeyNotAscii); Field = 1 } }
+    # -cne 而不是 -ne：密码是大小写敏感的，PowerShell 的 -ne 默认不分大小写
+    if ($First -cne $Second) { return [pscustomobject]@{ Message = (T $KeyMismatch); Field = 2 } }
+    return [pscustomobject]@{ Message = ''; Field = 1 }
+}
+
+function Show-DialogError {
+    # 两个窗口的错误行都是"写文本 + 显示"这一种用法，收一处
+    param($Label, [string]$Message)
+    $Label.Text = $Message
+    $Label.Visible = $true
+}
+
+function Set-DialogDpi {
+    # 对话框也要按 DPI 放大布局，放大之后再把字号设回点数值
+    # （原因见主遮罩处的说明：字体是点单位，本来就会随 DPI 变大，不能再被 Scale 放大一次）。
+    # $Items 里每一项是 @{ Control = 控件; Pt = 字号 }，需要粗体就再加 Style。
+    param($Dlg, [string]$Family, [float]$BasePt, $Items)
+    if ($script:Scale -le 1.01) { return }
+    $Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
+    $Dlg.Font = New-Object System.Drawing.Font($Family, [float]$BasePt)
+    foreach ($it in $Items) {
+        if ($it.Style) { $it.Control.Font = New-Object System.Drawing.Font($Family, [float]$it.Pt, $it.Style) }
+        else { $it.Control.Font = New-Object System.Drawing.Font($Family, [float]$it.Pt) }
+    }
 }
 
 # ------------------------------------------------------------------ 密码存取
@@ -724,7 +764,6 @@ function Save-PasswordConfig {
     # 顺序必须是：先按空 marker 生成正文 → 算摘要 → 再把值填回去。
     # 这样校验时只要把值清空就能一字不差地还原。安装器用的是同一条规则。
     param($Record, $Store)
-    $empty = '"marker":""'
     $body = [pscustomobject]@{
         version        = $Record.version
         algorithm      = $Record.algorithm
@@ -740,8 +779,12 @@ function Save-PasswordConfig {
     }
     $text = $body | ConvertTo-Json -Compress -Depth 4
     if ($null -eq $Store) { $Store = Read-IntegrityStore }
-    if ($Store -and $Store.markerKey -and $text.Contains($empty)) {
-        $text = $text.Replace($empty, ('"marker":"' + (Get-ConfigMarker -Text $text -KeyB64 $Store.markerKey) + '"'))
+    # 用正则而不是字符串包含：ConvertTo-Json 一旦输出成 "marker": ""（多个空格），
+    # 包含判断会悄悄不成立 —— marker 就写不进去，下次启动会被判成"配置被动过"。
+    # 这里和 Get-ConfigCanonical 用同一条规则，保证写入与校验认的是同一种写法。
+    if ($Store -and $Store.markerKey) {
+        $text = [regex]::Replace($text, '"marker"\s*:\s*""',
+            ('"marker":"' + (Get-ConfigMarker -Text $text -KeyB64 $Store.markerKey) + '"'))
     }
     foreach ($path in $script:ConfigCandidates) {
         if (-not $path) { continue }
@@ -776,7 +819,7 @@ function New-PasswordRecord {
     try { $rng.GetBytes($salt) } finally { $rng.Dispose() }
     $iterations = 120000
     $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, $iterations)
-    $hash = $derive.GetBytes(32)
+    try { $hash = $derive.GetBytes(32) } finally { $derive.Dispose() }
 
     $authSaltB64 = ''
     $authHashB64 = ''
@@ -809,7 +852,7 @@ function Test-PasswordRecord {
     try {
         $salt = [Convert]::FromBase64String($Record.salt)
         $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, [int]$Record.iterations)
-        $actual = $derive.GetBytes(32)
+        try { $actual = $derive.GetBytes(32) } finally { $derive.Dispose() }
         $expect = [Convert]::FromBase64String($Record.hash)
         if ($actual.Length -ne $expect.Length) { return $false }
         $diff = 0
@@ -1086,8 +1129,11 @@ function Invoke-GuardTick {
             # 遮罩必须一直压在最前：任何状态都要做，否则别的顶层窗口会盖在遮罩之上露出桌面内容。
             # 只有"有人在场"（刚有输入，$idle 很小）时才额外把前台抢回来，
             # 避免无谓地跟别的线程较劲（AttachThreadInput 在极端情况下会互相等待）。
+            # 拿不到有效 tick 时（GetLastInputTick 失败返回 uint.MaxValue，此时 idle 是 0）
+            # 不做这一步：否则会误判成"用户正在操作"，每 250ms 抢一次前台，屏幕抖个不停。
             [ScreenLockNative]::ReassertTopMost($script:Form.Handle)
-            if (($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
+            $tickOk = ([ScreenLockNative]::GetLastInputTick() -ne [uint32]::MaxValue)
+            if ($tickOk -and ($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
                 [ScreenLockNative]::ForceForeground($script:Form.Handle)
             }
             if ($script:Txt.Enabled -and (-not $script:Txt.Focused)) { $null = $script:Txt.Focus() }
@@ -1192,7 +1238,7 @@ function Restore-SystemState {
 # ==================================================================
 function Show-ChangePasswordDialog {
     # 返回值：'ok' = 已保存新密码 / 'cancel' = 用户取消 / 'toomany' = 授权码错太多次 / 'noauth' = 本机还没设授权码
-    $family = 'Microsoft YaHei UI'
+    $family = $script:UiFamily
     $script:CpwResult = 'cancel'
     $script:CpwAuthFails = 0
     $script:CpwErr = $null
@@ -1298,6 +1344,7 @@ function Show-ChangePasswordDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k19')
+    $cancel.Tag = 'dismiss'          # 封禁时唯一要留下来的那颗按钮（见 Set-AuthLockedUI）
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1336,25 +1383,12 @@ function Show-ChangePasswordDialog {
                 $null = $script:CpwAuth.Focus()
                 return
             }
-            $a = $script:CpwPwd1.Text
-            $b = $script:CpwPwd2.Text
-            if ($a.Length -lt 4) {
-                $script:CpwErr.Text = (T 'k21')
-                $script:CpwErr.Visible = $true
-                $null = $script:CpwPwd1.Focus()
-                return
-            }
-            if (-not (Test-PlainAscii $a)) {
-                $script:CpwErr.Text = (T 'k22')
-                $script:CpwErr.Visible = $true
-                $null = $script:CpwPwd1.Focus()
-                return
-            }
-            if ($a -cne $b) {
-                $script:CpwErr.Text = (T 'k23')
-                $script:CpwErr.Visible = $true
-                $script:CpwPwd2.Clear()
-                $null = $script:CpwPwd2.Focus()
+            $check = Test-NewPasswordInput -First $script:CpwPwd1.Text -Second $script:CpwPwd2.Text `
+                -KeyTooShort 'k21' -KeyNotAscii 'k22' -KeyMismatch 'k23'
+            if ($check.Message.Length -gt 0) {
+                Show-DialogError -Label $script:CpwErr -Message $check.Message
+                if ($check.Field -eq 2) { $script:CpwPwd2.Clear(); $null = $script:CpwPwd2.Focus() }
+                else { $null = $script:CpwPwd1.Focus() }
                 return
             }
             try {
@@ -1379,16 +1413,11 @@ function Show-ChangePasswordDialog {
     $script:CpwPwd1.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
     $script:CpwPwd2.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
 
-    # 按 DPI 放大整套布局，然后把字号设回点数值（声明 DPI 感知后必须做，
-    # 否则控件会显得过小；而字体是点单位，本来就会随 DPI 变大，不能被二次放大）。
-    if ($script:Scale -gt 1.01) {
-        $script:CpwDlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
-        $script:CpwDlg.Font = New-Object System.Drawing.Font($family, [float]9)
-        $head.Font = New-Object System.Drawing.Font($family, [float]15, [System.Drawing.FontStyle]::Bold)
-        $desc.Font = New-Object System.Drawing.Font($family, [float]9)
-        $save.Font = New-Object System.Drawing.Font($family, [float]10)
-        $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
-    }
+    Set-DialogDpi -Dlg $script:CpwDlg -Family $family -BasePt 9 -Items @(
+        @{ Control = $head; Pt = 15; Style = [System.Drawing.FontStyle]::Bold },
+        @{ Control = $desc; Pt = 9 },
+        @{ Control = $save; Pt = 10 },
+        @{ Control = $cancel; Pt = 10 })
 
     $null = $script:CpwDlg.ShowDialog()
     try { $script:CpwDlg.Dispose() } catch { }
@@ -1430,7 +1459,7 @@ function Show-RebuildDialog {
     # 返回值：'ok' = 已重设新密码 / 'cancel' = 用户放弃 / 'toomany' = 授权码错太多次
     # 说明：事件处理脚本块看不到函数内的局部变量，所以对话框里
     #       会被事件用到的控件统一放进 $script: 作用域。
-    $family = 'Microsoft YaHei UI'
+    $family = $script:UiFamily
     $script:DlgErr = $null
     $script:DlgFails = 0
     $script:DlgResult = 'cancel'
@@ -1538,6 +1567,7 @@ function Show-RebuildDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k39')
+    $cancel.Tag = 'dismiss'          # 同上：封禁时保留这颗，否则用户连窗都关不掉
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1579,25 +1609,12 @@ function Show-RebuildDialog {
                 $null = $script:DlgCurAuth.Focus()
                 return
             }
-            $a = $script:DlgPwd1.Text
-            $b = $script:DlgPwd2.Text
-            if ($a.Length -lt 4) {
-                $script:DlgErr.Text = (T 'k42')
-                $script:DlgErr.Visible = $true
-                $null = $script:DlgPwd1.Focus()
-                return
-            }
-            if (-not (Test-PlainAscii $a)) {
-                $script:DlgErr.Text = (T 'k43')
-                $script:DlgErr.Visible = $true
-                $null = $script:DlgPwd1.Focus()
-                return
-            }
-            if ($a -cne $b) {
-                $script:DlgErr.Text = (T 'k44')
-                $script:DlgErr.Visible = $true
-                $script:DlgPwd2.Clear()
-                $null = $script:DlgPwd2.Focus()
+            $check = Test-NewPasswordInput -First $script:DlgPwd1.Text -Second $script:DlgPwd2.Text `
+                -KeyTooShort 'k42' -KeyNotAscii 'k43' -KeyMismatch 'k44'
+            if ($check.Message.Length -gt 0) {
+                Show-DialogError -Label $script:DlgErr -Message $check.Message
+                if ($check.Field -eq 2) { $script:DlgPwd2.Clear(); $null = $script:DlgPwd2.Focus() }
+                else { $null = $script:DlgPwd1.Focus() }
                 return
             }
             try {
@@ -1622,18 +1639,14 @@ function Show-RebuildDialog {
     $script:DlgPwd1.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
     $script:DlgPwd2.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
 
-    # 同主遮罩：按 DPI 放大布局，再重设字号（原因见主遮罩处的说明）
-    if ($script:Scale -gt 1.01) {
-        $script:Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
-        $script:Dlg.Font = New-Object System.Drawing.Font($family, [float]9)
-        $head.Font = New-Object System.Drawing.Font($family, [float]15, [System.Drawing.FontStyle]::Bold)
-        $desc.Font = New-Object System.Drawing.Font($family, [float]9)
-        $ok.Font = New-Object System.Drawing.Font($family, [float]10)
-        $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
-        $tip.Font = New-Object System.Drawing.Font($family, [float]8.5)
-    }
+    Set-DialogDpi -Dlg $script:Dlg -Family $family -BasePt 9 -Items @(
+        @{ Control = $head; Pt = $headPt; Style = [System.Drawing.FontStyle]::Bold },
+        @{ Control = $desc; Pt = 9 },
+        @{ Control = $ok; Pt = 10 },
+        @{ Control = $cancel; Pt = 10 },
+        @{ Control = $tip; Pt = 8.5 })
 
-    $result = $script:Dlg.ShowDialog()
+    $null = $script:Dlg.ShowDialog()
     try { $script:Dlg.Dispose() } catch { }
     $script:Dlg = $null
     $script:DlgCurAuth = $null
@@ -1647,6 +1660,10 @@ function Show-RebuildDialog {
 # ==================================================================
 #  启动准备：控制台、单实例、密码
 # ==================================================================
+function Stop-SingleInstance {
+    # 正常退出时把单实例锁还回去：不然下次启动只能靠"锁被遗弃"那条兜底分支进来
+    try { if ($script:Mutex) { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose(); $script:Mutex = $null } } catch { }
+}
 if (-not $SelfTest) {
     # 控制台窗口已经在脚本最早期处理过（见开头"启动最早期"）
 
@@ -1687,12 +1704,14 @@ if (-not $SelfTest) {
             [System.Windows.Forms.MessageBox]::Show(
                 (T 'k47'),
                 'CAScreenGuard', 'OK', 'Information') | Out-Null
+            Stop-SingleInstance
             exit 0
         }
         elseif ($integrity -eq 'unprovable') {
             [System.Windows.Forms.MessageBox]::Show(
                 (T 'k48'),
                 (T 'k49'), 'OK', 'Warning') | Out-Null
+            Stop-SingleInstance
             exit 0
         }
         else {
@@ -1704,6 +1723,7 @@ if (-not $SelfTest) {
                 [System.Windows.Forms.MessageBox]::Show(
                     (T 'k52') + $note,
                     (T 'k53'), 'OK', 'Warning') | Out-Null
+                Stop-SingleInstance
                 exit 0
             }
         }
@@ -1717,7 +1737,7 @@ else {
 # ==================================================================
 #  主界面（全屏黑色遮罩 + 密码框）
 # ==================================================================
-$family = 'Microsoft YaHei UI'
+$family = $script:UiFamily
 $cardW = 580
 # 卡片不铺满高度：内容排完之后上下只留一点点余量。封禁提示出现时占用"快捷键提示"那两行的位置
 $cardH = 304
@@ -1743,11 +1763,8 @@ try {
 $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
 $card.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
-$primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$cardX = [int](($primary.X + ($primary.Width - $cardW) / 2) - $script:Form.Bounds.X)
-$cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Bounds.Y)
-$card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
+# 卡片的位置不在这里定：DPI 缩放之后还要按"放大后的尺寸 + 时钟的位置"重排一次（见下方定位段）
 
 # 壁纸背景不在这一刻画：要等屏幕真的熄下去之后再静默合成（见 Install-WallpaperBackground）
 
@@ -1909,16 +1926,16 @@ function Update-Clock {
 }
 Update-Clock
 
+# 主屏尺寸：下面排卡片、时钟都要用它，自检里也要拿它比对遮罩尺寸，所以在这里取一次就够
+$primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
 # 按 DPI 放大整套布局，然后把字号设回点数值：
 # 声明 DPI 感知后，控件的坐标/尺寸需要跟着 DPI 放大（否则在高缩放屏上会显得很小）；
 # 而字体是点单位、本来就会随 DPI 变大，所以必须在缩放之后重新设一遍字号，否则会被二次放大。
+# （卡片的位置不在这里定：缩放后尺寸变了，统一交给下面那段"最终定位"处理）
 if ($script:Scale -gt 1.01) {
     $script:Form.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
     $script:Form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
-    # Scale() 会把卡片带着一起按比例挪位，这里按"已经放大的尺寸"把它重新摆回主屏正中
-    $primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $card.Left = [int]($primaryNow.X + ($primaryNow.Width - $card.Width) / 2) - $script:Form.Bounds.X
-    $card.Top = [int]($primaryNow.Y + ($primaryNow.Height - $card.Height) / 2) - $script:Form.Bounds.Y
     $title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
     $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
     $script:Txt.Font = New-Object System.Drawing.Font($family, [float]17)
@@ -1934,9 +1951,8 @@ if ($script:Scale -gt 1.01) {
 #   日期：字形高约 20 DIP（含降部），与时间底边相隔 32 DIP，粗体
 #   两行都水平居中
 # 1 DIP = $script:Scale 个物理像素，所以下面的数字都乘这个系数。
-$primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$ox = $primaryNow.X - $script:Form.Bounds.X
-$oy = $primaryNow.Y - $script:Form.Bounds.Y
+$ox = $primary.X - $script:Form.Bounds.X
+$oy = $primary.Y - $script:Form.Bounds.Y
 
 $fontTime = New-Object System.Drawing.Font($family, [float]74, [System.Drawing.FontStyle]::Bold)
 $fontDate = New-Object System.Drawing.Font($family, [float]17, [System.Drawing.FontStyle]::Bold)
@@ -1945,8 +1961,8 @@ $script:ClockDate.Font = $fontDate
 $script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(245, 246, 248)
 $script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
 
-$clockW = [int]($primaryNow.Width * 0.8)
-$clockX = [int]($ox + ($primaryNow.Width - $clockW) / 2)
+$clockW = [int]($primary.Width * 0.8)
+$clockX = [int]($ox + ($primary.Width - $clockW) / 2)
 $timeH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockTime.Text, $fontTime).Height
 $dateH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockDate.Text, $fontDate).Height
 # 标签内部有一段行距：字形顶边会比标签顶边低约 0.26em（实测得出），定位时要减掉，
@@ -1959,12 +1975,12 @@ $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
 $script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
 
 # 卡片：竖直居中（收矮之后就不需要再往下挪了）；只有屏幕太矮、会压到时钟时才让位
-$cardTop = [int]($oy + ($primaryNow.Height - $card.Height) / 2)
+$cardTop = [int]($oy + ($primary.Height - $card.Height) / 2)
 $minTop = $dateTop + $dateH + [int](28 * $script:Scale)
 if ($cardTop -lt $minTop) { $cardTop = $minTop }
-$maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)
+$maxTop = [int]($oy + $primary.Height - $card.Height - 16 * $script:Scale)
 if ($cardTop -gt $maxTop -and $maxTop -gt $minTop) { $cardTop = $maxTop }
-$card.Left = [int]($ox + ($primaryNow.Width - $card.Width) / 2)
+$card.Left = [int]($ox + ($primary.Width - $card.Width) / 2)
 $card.Top = $cardTop
 
 # 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
@@ -2228,6 +2244,7 @@ catch {
 }
 finally {
     $script:AllowClose = $true
+    Stop-SingleInstance
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
     try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   # 壁纸是本地大图，用完即放

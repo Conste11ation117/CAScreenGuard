@@ -371,6 +371,8 @@ trap {
 
 
 $script:LastTickError = ''
+
+$script:UiFamily = 'Microsoft YaHei UI'
 $script:Scale = 1.0             
 try { $dpiNow = [ScreenLockEarly]::GetDpiForSystem(); if ($dpiNow -gt 0) { $script:Scale = $dpiNow / 96.0 } } catch { }
 $script:DlgOpen = $false          
@@ -503,7 +505,10 @@ function Install-WallpaperBackground {
         } catch { }
         $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
         $script:Form.BackgroundImage = $script:Wallpaper
+        
+        
         $card.BackColor = [System.Drawing.Color]::Transparent
+        try { $logoMark.BackColor = [System.Drawing.Color]::Transparent } catch { }
         if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
     } catch { }
 }
@@ -610,7 +615,9 @@ function Set-AuthLockedUI {
         Show-LockNotice
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
-            elseif ($c -is [System.Windows.Forms.Button] -and $c.Text -ne (T 'k19') -and $c.Text -ne (T 'k39')) {
+            
+            
+            elseif ($c -is [System.Windows.Forms.Button] -and $c.Tag -ne 'dismiss') {
                 $c.Enabled = $false
                 $c.BackColor = [System.Drawing.Color]::FromArgb(214, 216, 220)
                 $c.ForeColor = [System.Drawing.Color]::FromArgb(150, 152, 156)
@@ -631,8 +638,9 @@ function Test-AuthCode {
         $iterations = 120000
         if ($Source.authIterations) { $iterations = [int]$Source.authIterations }
         $salt = [Convert]::FromBase64String($Source.authSalt)
+        
         $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($code, $salt, $iterations)
-        $actual = $derive.GetBytes(32)
+        try { $actual = $derive.GetBytes(32) } finally { $derive.Dispose() }
         $expect = [Convert]::FromBase64String($Source.authHash)
         if ($actual.Length -ne $expect.Length) { return $false }
         $diff = 0
@@ -652,6 +660,38 @@ function Test-PlainAscii {
         if (($code -lt 33) -or ($code -gt 126)) { return $false }
     }
     return $true
+}
+
+function Test-NewPasswordInput {
+    
+    
+    param([string]$First, [string]$Second, [string]$KeyTooShort, [string]$KeyNotAscii, [string]$KeyMismatch)
+    if ($First.Length -lt 4) { return [pscustomobject]@{ Message = (T $KeyTooShort); Field = 1 } }
+    if (-not (Test-PlainAscii $First)) { return [pscustomobject]@{ Message = (T $KeyNotAscii); Field = 1 } }
+    
+    if ($First -cne $Second) { return [pscustomobject]@{ Message = (T $KeyMismatch); Field = 2 } }
+    return [pscustomobject]@{ Message = ''; Field = 1 }
+}
+
+function Show-DialogError {
+    
+    param($Label, [string]$Message)
+    $Label.Text = $Message
+    $Label.Visible = $true
+}
+
+function Set-DialogDpi {
+    
+    
+    
+    param($Dlg, [string]$Family, [float]$BasePt, $Items)
+    if ($script:Scale -le 1.01) { return }
+    $Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
+    $Dlg.Font = New-Object System.Drawing.Font($Family, [float]$BasePt)
+    foreach ($it in $Items) {
+        if ($it.Style) { $it.Control.Font = New-Object System.Drawing.Font($Family, [float]$it.Pt, $it.Style) }
+        else { $it.Control.Font = New-Object System.Drawing.Font($Family, [float]$it.Pt) }
+    }
 }
 
 
@@ -682,7 +722,6 @@ function Save-PasswordConfig {
     
     
     param($Record, $Store)
-    $empty = '"marker":""'
     $body = [pscustomobject]@{
         version        = $Record.version
         algorithm      = $Record.algorithm
@@ -698,8 +737,12 @@ function Save-PasswordConfig {
     }
     $text = $body | ConvertTo-Json -Compress -Depth 4
     if ($null -eq $Store) { $Store = Read-IntegrityStore }
-    if ($Store -and $Store.markerKey -and $text.Contains($empty)) {
-        $text = $text.Replace($empty, ('"marker":"' + (Get-ConfigMarker -Text $text -KeyB64 $Store.markerKey) + '"'))
+    
+    
+    
+    if ($Store -and $Store.markerKey) {
+        $text = [regex]::Replace($text, '"marker"\s*:\s*""',
+            ('"marker":"' + (Get-ConfigMarker -Text $text -KeyB64 $Store.markerKey) + '"'))
     }
     foreach ($path in $script:ConfigCandidates) {
         if (-not $path) { continue }
@@ -734,7 +777,7 @@ function New-PasswordRecord {
     try { $rng.GetBytes($salt) } finally { $rng.Dispose() }
     $iterations = 120000
     $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, $iterations)
-    $hash = $derive.GetBytes(32)
+    try { $hash = $derive.GetBytes(32) } finally { $derive.Dispose() }
 
     $authSaltB64 = ''
     $authHashB64 = ''
@@ -767,7 +810,7 @@ function Test-PasswordRecord {
     try {
         $salt = [Convert]::FromBase64String($Record.salt)
         $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, [int]$Record.iterations)
-        $actual = $derive.GetBytes(32)
+        try { $actual = $derive.GetBytes(32) } finally { $derive.Dispose() }
         $expect = [Convert]::FromBase64String($Record.hash)
         if ($actual.Length -ne $expect.Length) { return $false }
         $diff = 0
@@ -1044,8 +1087,11 @@ function Invoke-GuardTick {
             
             
             
+            
+            
             [ScreenLockNative]::ReassertTopMost($script:Form.Handle)
-            if (($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
+            $tickOk = ([ScreenLockNative]::GetLastInputTick() -ne [uint32]::MaxValue)
+            if ($tickOk -and ($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
                 [ScreenLockNative]::ForceForeground($script:Form.Handle)
             }
             if ($script:Txt.Enabled -and (-not $script:Txt.Focused)) { $null = $script:Txt.Focus() }
@@ -1150,7 +1196,7 @@ function Restore-SystemState {
 
 function Show-ChangePasswordDialog {
     
-    $family = 'Microsoft YaHei UI'
+    $family = $script:UiFamily
     $script:CpwResult = 'cancel'
     $script:CpwAuthFails = 0
     $script:CpwErr = $null
@@ -1256,6 +1302,7 @@ function Show-ChangePasswordDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k19')
+    $cancel.Tag = 'dismiss'          
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1294,25 +1341,12 @@ function Show-ChangePasswordDialog {
                 $null = $script:CpwAuth.Focus()
                 return
             }
-            $a = $script:CpwPwd1.Text
-            $b = $script:CpwPwd2.Text
-            if ($a.Length -lt 4) {
-                $script:CpwErr.Text = (T 'k21')
-                $script:CpwErr.Visible = $true
-                $null = $script:CpwPwd1.Focus()
-                return
-            }
-            if (-not (Test-PlainAscii $a)) {
-                $script:CpwErr.Text = (T 'k22')
-                $script:CpwErr.Visible = $true
-                $null = $script:CpwPwd1.Focus()
-                return
-            }
-            if ($a -cne $b) {
-                $script:CpwErr.Text = (T 'k23')
-                $script:CpwErr.Visible = $true
-                $script:CpwPwd2.Clear()
-                $null = $script:CpwPwd2.Focus()
+            $check = Test-NewPasswordInput -First $script:CpwPwd1.Text -Second $script:CpwPwd2.Text `
+                -KeyTooShort 'k21' -KeyNotAscii 'k22' -KeyMismatch 'k23'
+            if ($check.Message.Length -gt 0) {
+                Show-DialogError -Label $script:CpwErr -Message $check.Message
+                if ($check.Field -eq 2) { $script:CpwPwd2.Clear(); $null = $script:CpwPwd2.Focus() }
+                else { $null = $script:CpwPwd1.Focus() }
                 return
             }
             try {
@@ -1337,16 +1371,11 @@ function Show-ChangePasswordDialog {
     $script:CpwPwd1.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
     $script:CpwPwd2.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
 
-    
-    
-    if ($script:Scale -gt 1.01) {
-        $script:CpwDlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
-        $script:CpwDlg.Font = New-Object System.Drawing.Font($family, [float]9)
-        $head.Font = New-Object System.Drawing.Font($family, [float]15, [System.Drawing.FontStyle]::Bold)
-        $desc.Font = New-Object System.Drawing.Font($family, [float]9)
-        $save.Font = New-Object System.Drawing.Font($family, [float]10)
-        $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
-    }
+    Set-DialogDpi -Dlg $script:CpwDlg -Family $family -BasePt 9 -Items @(
+        @{ Control = $head; Pt = 15; Style = [System.Drawing.FontStyle]::Bold },
+        @{ Control = $desc; Pt = 9 },
+        @{ Control = $save; Pt = 10 },
+        @{ Control = $cancel; Pt = 10 })
 
     $null = $script:CpwDlg.ShowDialog()
     try { $script:CpwDlg.Dispose() } catch { }
@@ -1388,7 +1417,7 @@ function Show-RebuildDialog {
     
     
     
-    $family = 'Microsoft YaHei UI'
+    $family = $script:UiFamily
     $script:DlgErr = $null
     $script:DlgFails = 0
     $script:DlgResult = 'cancel'
@@ -1496,6 +1525,7 @@ function Show-RebuildDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k39')
+    $cancel.Tag = 'dismiss'          
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1537,25 +1567,12 @@ function Show-RebuildDialog {
                 $null = $script:DlgCurAuth.Focus()
                 return
             }
-            $a = $script:DlgPwd1.Text
-            $b = $script:DlgPwd2.Text
-            if ($a.Length -lt 4) {
-                $script:DlgErr.Text = (T 'k42')
-                $script:DlgErr.Visible = $true
-                $null = $script:DlgPwd1.Focus()
-                return
-            }
-            if (-not (Test-PlainAscii $a)) {
-                $script:DlgErr.Text = (T 'k43')
-                $script:DlgErr.Visible = $true
-                $null = $script:DlgPwd1.Focus()
-                return
-            }
-            if ($a -cne $b) {
-                $script:DlgErr.Text = (T 'k44')
-                $script:DlgErr.Visible = $true
-                $script:DlgPwd2.Clear()
-                $null = $script:DlgPwd2.Focus()
+            $check = Test-NewPasswordInput -First $script:DlgPwd1.Text -Second $script:DlgPwd2.Text `
+                -KeyTooShort 'k42' -KeyNotAscii 'k43' -KeyMismatch 'k44'
+            if ($check.Message.Length -gt 0) {
+                Show-DialogError -Label $script:DlgErr -Message $check.Message
+                if ($check.Field -eq 2) { $script:DlgPwd2.Clear(); $null = $script:DlgPwd2.Focus() }
+                else { $null = $script:DlgPwd1.Focus() }
                 return
             }
             try {
@@ -1580,18 +1597,14 @@ function Show-RebuildDialog {
     $script:DlgPwd1.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
     $script:DlgPwd2.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
 
-    
-    if ($script:Scale -gt 1.01) {
-        $script:Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
-        $script:Dlg.Font = New-Object System.Drawing.Font($family, [float]9)
-        $head.Font = New-Object System.Drawing.Font($family, [float]15, [System.Drawing.FontStyle]::Bold)
-        $desc.Font = New-Object System.Drawing.Font($family, [float]9)
-        $ok.Font = New-Object System.Drawing.Font($family, [float]10)
-        $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
-        $tip.Font = New-Object System.Drawing.Font($family, [float]8.5)
-    }
+    Set-DialogDpi -Dlg $script:Dlg -Family $family -BasePt 9 -Items @(
+        @{ Control = $head; Pt = $headPt; Style = [System.Drawing.FontStyle]::Bold },
+        @{ Control = $desc; Pt = 9 },
+        @{ Control = $ok; Pt = 10 },
+        @{ Control = $cancel; Pt = 10 },
+        @{ Control = $tip; Pt = 8.5 })
 
-    $result = $script:Dlg.ShowDialog()
+    $null = $script:Dlg.ShowDialog()
     try { $script:Dlg.Dispose() } catch { }
     $script:Dlg = $null
     $script:DlgCurAuth = $null
@@ -1605,6 +1618,10 @@ function Show-RebuildDialog {
 
 
 
+function Stop-SingleInstance {
+    
+    try { if ($script:Mutex) { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose(); $script:Mutex = $null } } catch { }
+}
 if (-not $SelfTest) {
     
 
@@ -1645,12 +1662,14 @@ if (-not $SelfTest) {
             [System.Windows.Forms.MessageBox]::Show(
                 (T 'k47'),
                 'CAScreenGuard', 'OK', 'Information') | Out-Null
+            Stop-SingleInstance
             exit 0
         }
         elseif ($integrity -eq 'unprovable') {
             [System.Windows.Forms.MessageBox]::Show(
                 (T 'k48'),
                 (T 'k49'), 'OK', 'Warning') | Out-Null
+            Stop-SingleInstance
             exit 0
         }
         else {
@@ -1662,6 +1681,7 @@ if (-not $SelfTest) {
                 [System.Windows.Forms.MessageBox]::Show(
                     (T 'k52') + $note,
                     (T 'k53'), 'OK', 'Warning') | Out-Null
+                Stop-SingleInstance
                 exit 0
             }
         }
@@ -1675,7 +1695,7 @@ else {
 
 
 
-$family = 'Microsoft YaHei UI'
+$family = $script:UiFamily
 $cardW = 580
 
 $cardH = 304
@@ -1701,11 +1721,8 @@ try {
 $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
 $card.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
-$primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$cardX = [int](($primary.X + ($primary.Width - $cardW) / 2) - $script:Form.Bounds.X)
-$cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Bounds.Y)
-$card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
+
 
 
 
@@ -1868,15 +1885,15 @@ function Update-Clock {
 Update-Clock
 
 
+$primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
+
+
 
 
 if ($script:Scale -gt 1.01) {
     $script:Form.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
     $script:Form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
-    
-    $primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $card.Left = [int]($primaryNow.X + ($primaryNow.Width - $card.Width) / 2) - $script:Form.Bounds.X
-    $card.Top = [int]($primaryNow.Y + ($primaryNow.Height - $card.Height) / 2) - $script:Form.Bounds.Y
     $title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
     $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
     $script:Txt.Font = New-Object System.Drawing.Font($family, [float]17)
@@ -1892,9 +1909,8 @@ if ($script:Scale -gt 1.01) {
 
 
 
-$primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$ox = $primaryNow.X - $script:Form.Bounds.X
-$oy = $primaryNow.Y - $script:Form.Bounds.Y
+$ox = $primary.X - $script:Form.Bounds.X
+$oy = $primary.Y - $script:Form.Bounds.Y
 
 $fontTime = New-Object System.Drawing.Font($family, [float]74, [System.Drawing.FontStyle]::Bold)
 $fontDate = New-Object System.Drawing.Font($family, [float]17, [System.Drawing.FontStyle]::Bold)
@@ -1903,8 +1919,8 @@ $script:ClockDate.Font = $fontDate
 $script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(245, 246, 248)
 $script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
 
-$clockW = [int]($primaryNow.Width * 0.8)
-$clockX = [int]($ox + ($primaryNow.Width - $clockW) / 2)
+$clockW = [int]($primary.Width * 0.8)
+$clockX = [int]($ox + ($primary.Width - $clockW) / 2)
 $timeH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockTime.Text, $fontTime).Height
 $dateH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockDate.Text, $fontDate).Height
 
@@ -1917,12 +1933,12 @@ $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
 $script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
 
 
-$cardTop = [int]($oy + ($primaryNow.Height - $card.Height) / 2)
+$cardTop = [int]($oy + ($primary.Height - $card.Height) / 2)
 $minTop = $dateTop + $dateH + [int](28 * $script:Scale)
 if ($cardTop -lt $minTop) { $cardTop = $minTop }
-$maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)
+$maxTop = [int]($oy + $primary.Height - $card.Height - 16 * $script:Scale)
 if ($cardTop -gt $maxTop -and $maxTop -gt $minTop) { $cardTop = $maxTop }
-$card.Left = [int]($ox + ($primaryNow.Width - $card.Width) / 2)
+$card.Left = [int]($ox + ($primary.Width - $card.Width) / 2)
 $card.Top = $cardTop
 
 
@@ -2186,6 +2202,7 @@ catch {
 }
 finally {
     $script:AllowClose = $true
+    Stop-SingleInstance
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
     try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   

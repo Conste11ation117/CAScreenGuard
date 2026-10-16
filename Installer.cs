@@ -525,12 +525,9 @@ public class CAScreenGuardInstaller
                            Str.S("k03");
                 }
             }
-            try { Registry.CurrentUser.DeleteSubKeyTree(StoreKey, false); } catch { }
-            try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
-            try { if (File.Exists(MirrorPath)) { File.Delete(MirrorPath); } } catch { }
-            try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { }
-            try { string mdir = MirrorDir; if (Directory.Exists(mdir) && Directory.GetFileSystemEntries(mdir).Length == 0) { Directory.Delete(mdir); } } catch { }
-            try { string lnk = Path.Combine(DesktopDir, LnkLeaf); if (File.Exists(lnk)) { File.Delete(lnk); } } catch { }
+            RemoveExternalCredentials();
+            // 上一版的桌面快捷方式也要清掉：它指向的是旧目录，留着就会变成一个点了没反应的图标
+            RemoveShortcut();
         }
         try
         {
@@ -590,6 +587,8 @@ public class CAScreenGuardInstaller
             ",\"authIterations\":" + iterations + ",\"authHint\":" + Json(authHint) +
             ",\"provisioned\":" + Json(created) + "}";
         File.WriteAllText(MirrorPath, mirror, new UTF8Encoding(false));
+        // 重新安装 = 全新的开始：连"授权码永久封禁"一起清掉。
+        // 这里只删封禁记录 —— 注册表刚写好、副本刚写完，不能整块走 RemoveExternalCredentials。
         try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { }
 
         string lnkNote;
@@ -630,6 +629,37 @@ public class CAScreenGuardInstaller
     }
 
     // ---------- 卸载 ----------
+    // 删掉"外部凭证"那几样：注册表里的两棵树 + APPDATA 副本 + 授权码封禁记录。
+    // 安装（重装前清理）和卸载走的是同一套，收在一处免得两边改漏。
+    // 返回 true 表示有东西没删干净（调用方据此提示用户"可能还有残留"）
+    static bool RemoveExternalCredentials()
+    {
+        bool leftovers = false;
+        try { Registry.CurrentUser.DeleteSubKeyTree(StoreKey, false); } catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
+        try { if (File.Exists(MirrorPath)) { File.Delete(MirrorPath); } } catch { leftovers = true; }
+        try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { leftovers = true; }
+        try { string mdir = MirrorDir; if (Directory.Exists(mdir) && Directory.GetFileSystemEntries(mdir).Length == 0) { Directory.Delete(mdir); } } catch { }
+        return leftovers;
+    }
+
+    // 删桌面快捷方式；删完要通知资源管理器，否则它注册的全局快捷键会一直残留到注销/重启。
+    // 返回 false 表示没删干净（装的时候也用它清理上一版的快捷方式，那种情况不关心返回值）。
+    static bool RemoveShortcut()
+    {
+        try
+        {
+            string lnk = Path.Combine(DesktopDir, LnkLeaf);
+            if (File.Exists(lnk))
+            {
+                File.Delete(lnk);
+                NotifyShell(lnk);
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
     static void DoUninstall(bool silent)
     {
         if (!silent)
@@ -642,22 +672,10 @@ public class CAScreenGuardInstaller
         }
         string dir = InstalledDir();
         bool leftovers = false;
-        try { Registry.CurrentUser.DeleteSubKeyTree(StoreKey, false); } catch { }
-        try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
-        try { if (File.Exists(MirrorPath)) { File.Delete(MirrorPath); } } catch { leftovers = true; }
-        try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { leftovers = true; }
-        try { string mdir = MirrorDir; if (Directory.Exists(mdir) && Directory.GetFileSystemEntries(mdir).Length == 0) { Directory.Delete(mdir); } } catch { }
-        try
-        {
-            string lnk = Path.Combine(DesktopDir, LnkLeaf);
-            if (File.Exists(lnk))
-            {
-                File.Delete(lnk);
-                // 告诉资源管理器"这个快捷方式没了"，否则它注册的全局快捷键会一直残留到注销/重启
-                NotifyShell(lnk);
-            }
-        }
-        catch { leftovers = true; }
+        leftovers = RemoveExternalCredentials();
+        // 快捷方式删不掉同样算残留；删掉后要通知资源管理器，
+        // 否则它注册的全局快捷键会一直残留到注销/重启
+        if (!RemoveShortcut()) { leftovers = true; }
         string msg = Str.S("k16");
         if (leftovers) { msg += Str.S("k74"); }
         if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
@@ -1061,10 +1079,16 @@ public class SetupForm : Form
         pic.Size = new Size(S(76), S(76));
         pic.Location = new Point(S(30), S(28));
         try {
-            Icon ic = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            // 优先用嵌在安装包里的那张 256 图标（清晰），取不到才退回 exe 自己的图标。
+            // Icon 是一次性的：用完必须 Dispose（.ToBitmap() 出来的那份交给 PictureBox 托管）。
             Bitmap _big = LoadAppIconBitmap(S(76));
             if (_big != null) { pic.Image = _big; }
-            else if (ic != null) { pic.Image = new Bitmap(ic.ToBitmap(), S(76), S(76)); }
+            else {
+                using (Icon ic = Icon.ExtractAssociatedIcon(Application.ExecutablePath))
+                {
+                    if (ic != null) { pic.Image = new Bitmap(ic.ToBitmap(), S(76), S(76)); }
+                }
+            }
         } catch { }
         pageWelcome.Controls.Add(pic);
 
@@ -1272,18 +1296,28 @@ public class SetupForm : Form
             return;
         }
 
-        string msg;
+        string msg = "";
+        bool ok = false;
         Cursor = Cursors.WaitCursor;
         // Install 在 UI 线程上同步跑 3~10 秒，期间窗口会被系统标记"未响应"，先禁掉免得被反复点
         btnInstall.Enabled = false;
         btnInstall.Refresh();
         Status(Str.S("k72"));
-        try { msg = CAScreenGuardInstaller.Install(full, pwd, auth, hint, chkLink.Checked, hotkey); }
-        catch (UnauthorizedAccessException) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k60")); return; }
-        catch (IOException ex) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k61") + ex.Message); return; }
-        catch (Exception ex) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k62") + ex.Message); return; }
-        Cursor = Cursors.Default;
-        btnInstall.Enabled = true;
+        try
+        {
+            msg = CAScreenGuardInstaller.Install(full, pwd, auth, hint, chkLink.Checked, hotkey);
+            ok = true;
+        }
+        // 三类失败各有各的说法，但"恢复光标和按钮"这一步是共用的 —— 放在 finally 里，不会漏
+        catch (UnauthorizedAccessException) { Fail(Str.S("k60")); }
+        catch (IOException ex) { Fail(Str.S("k61") + ex.Message); }
+        catch (Exception ex) { Fail(Str.S("k62") + ex.Message); }
+        finally
+        {
+            Cursor = Cursors.Default;
+            btnInstall.Enabled = true;
+        }
+        if (!ok) { return; }
 
         MessageBox.Show(this, msg, Str.S("k63") + CAScreenGuardInstaller.AppName + " " + CAScreenGuardInstaller.AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Information);
         DialogResult = DialogResult.OK;

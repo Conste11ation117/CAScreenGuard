@@ -140,8 +140,10 @@ public static class ScreenLockNative
     // ---------------- window z-order / foreground ----------------
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+    // 第二个参数是"可选的进程 ID 出参"：这里只需要线程 ID，所以统一传一个丢弃用的变量，
+    // 不能再传 IntPtr.Zero —— 那是 8 字节，而 API 要的是一个指向 DWORD 的指针。
     [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll")]
     private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("user32.dll")]
@@ -171,7 +173,8 @@ public static class ScreenLockNative
         IntPtr fg = GetForegroundWindow();
         if (fg == hWnd) return;
         uint current = GetCurrentThreadId();
-        uint fgThread = GetWindowThreadProcessId(fg, IntPtr.Zero);
+        uint ignoredProcessId;
+        uint fgThread = GetWindowThreadProcessId(fg, out ignoredProcessId);
         bool attached = false;
         if (fgThread != 0 && fgThread != current)
         {
@@ -241,8 +244,7 @@ public static class ScreenLockNative
 
     // ---------------- low level keyboard hook ----------------
     // 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc：堵住开始菜单、窗口缩略图、
-    // Win+G 这类真实的视觉泄露路径。只挡这几个组合，其余按键一律放行。
-    // 注意：只拦下面这几组组合键，其余按键一律放行。
+    // Win+G 这类真实的视觉泄露路径。只挡这几组，其余按键一律放行。
     public static volatile bool BlockSystemKeys = false;   // UI 线程写，钩子回调线程读
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -303,7 +305,7 @@ public static class ScreenLockNative
     {
         try
         {
-            if (nCode >= 0 && BlockSystemKeys)
+            if (nCode >= 0 && BlockSystemKeys && lParam != IntPtr.Zero)
             {
                 int msg = wParam.ToInt32();
                 if (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP)

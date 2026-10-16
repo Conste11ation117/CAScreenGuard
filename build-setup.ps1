@@ -92,6 +92,9 @@ function Remove-CsComments {
         $c = $Text[$i]
         $c2 = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
         if ($inLine) {
+            # 行注释只吃掉注释文字，CRLF 必须完整留下：只补 LF 
+            # 产物就不是"全 CRLF"了（以前靠后面那道按行归一化遮着，那道已经去掉）
+            if ($c -eq "`r" -and $c2 -eq "`n") { $inLine = $false; [void]$sb.Append($c); [void]$sb.Append($c2); $i += 2; continue }
             if ($c -eq "`n") { $inLine = $false; [void]$sb.Append($c) }
             $i++; continue
         }
@@ -99,6 +102,7 @@ function Remove-CsComments {
             if ($c -eq '*' -and $c2 -eq '/') { $inBlock = $false; $i += 2; continue }
             # 保留块注释里的换行，否则会把注释两侧的代码拼成一行，
             # 极端情况下还会把记号粘在一起（int/**/y 变成 inty）
+            if ($c -eq "`r" -and $c2 -eq "`n") { [void]$sb.Append($c); [void]$sb.Append($c2); $i += 2; continue }
             if ($c -eq "`n") { [void]$sb.Append($c) }
             $i++; continue
         }

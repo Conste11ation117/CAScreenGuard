@@ -416,6 +416,7 @@ $script:LastTickError = ''
 $script:Scale = 1.0             # 屏幕缩放比（DPI/96）：把布局按 DPI 放大，字才不糊也不小
 try { $dpiNow = [ScreenLockEarly]::GetDpiForSystem(); if ($dpiNow -gt 0) { $script:Scale = $dpiNow / 96.0 } } catch { }
 $script:DlgOpen = $false          # 「修改密码」窗口开着时，暂停止顶与抢焦点
+$script:BoxState = 'normal'       # 密码框描边状态：normal（聚焦亮蓝）/ error（红）/ locked（封禁变暗）
 # 解锁密码与授权码都由安装程序预置：授权码一经安装即定版，脚本这边只负责改解锁密码。
 # 它们的加盐哈希存在配置文件里（提示是明文，方便你自己想起授权码）。
 $script:ConfigFileName = '.cascreenguard.config.json'
@@ -463,6 +464,19 @@ if ($script:LangArg -eq 'zh' -or $script:LangArg -eq 'en') {
 }
 
 # ------------------------------------------------------------------ 小工具
+function New-RoundedPath {
+    # 圆角矩形路径：给卡片/胶囊输入框做 Region 和描边用（与 make-icon.ps1 同一套画法）
+    param([float]$x, [float]$y, [float]$w, [float]$h, [float]$r)
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $d = $r * 2
+    $p.AddArc($x, $y, $d, $d, 180, 90)
+    $p.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
+    $p.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
+    $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+    $p.CloseFigure()
+    return $p
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -476,12 +490,19 @@ function Invoke-Sound {
 }
 
 function Show-ErrorMsg {
-    param([string]$Text)
+    param([string]$Text, [switch]$Info)
     $script:TxtError.Text = $Text
     if (-not $script:TxtError.Visible) { $script:TxtError.Visible = $true }
+    # 纯通知类消息（改密码成功/取消等）不算输入错误，别把密码框描边染红
+    if (-not $Info) {
+        $script:BoxState = 'error'
+        try { $script:BoxPanel.Invalidate() } catch { }
+    }
 }
 
 function Hide-ErrorMsg {
+    if ($script:BoxState -ne 'locked') { $script:BoxState = 'normal' }
+    try { $script:BoxPanel.Invalidate() } catch { }
     if ($script:TxtError -and $script:TxtError.Visible) { $script:TxtError.Visible = $false }
 }
 
@@ -513,7 +534,13 @@ function Set-AuthLockedUI {
         }
         # 授权码都连错 3 次了：锁屏那个密码框也一起禁掉，和密码连错 8 次同等待遇
         $script:TxtLockedOut = $true
+        $script:BoxState = 'locked'
         try { $script:Txt.Enabled = $false } catch { }
+        try {
+            $script:BoxPanel.BackColor = [System.Drawing.Color]::FromArgb(16, 16, 18)
+            $script:Txt.BackColor = $script:BoxPanel.BackColor
+            $script:BoxPanel.Invalidate()
+        } catch { }
         try { $script:LockNotice.Visible = $true } catch { }
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
@@ -890,6 +917,13 @@ function Invoke-SubmitAttempt {
         $script:TxtLockedOut = $true
         $script:CooldownActive = $false
         try { $script:Txt.Enabled = $false } catch { }
+        # 输入框一起变暗：让人一眼看出"这里已经不再接受输入了"
+        $script:BoxState = 'locked'
+        try {
+            $script:BoxPanel.BackColor = [System.Drawing.Color]::FromArgb(16, 16, 18)
+            $script:Txt.BackColor = $script:BoxPanel.BackColor
+            $script:BoxPanel.Invalidate()
+        } catch { }
         Hide-ErrorMsg
         try { $script:LockNotice.Visible = $true } catch { }
         Invoke-Sound 'error'
@@ -1267,13 +1301,13 @@ function Invoke-ChangePasswordFlow {
     # 用户只会看到"点了没反应"。回执直接写在锁屏界面自己的提示行上（永远可见）。
     if ($outcome -eq 'ok') {
         try { $script:Txt.Clear() } catch { }
-        Show-ErrorMsg (T 'k25')
+        Show-ErrorMsg (T 'k25') -Info
     }
     elseif ($outcome -eq 'toomany') {
-        Show-ErrorMsg (T 'k26')
+        Show-ErrorMsg (T 'k26') -Info
     }
     elseif ($outcome -eq 'noauth') {
-        Show-ErrorMsg (T 'k27')
+        Show-ErrorMsg (T 'k27') -Info
     }
 }
 
@@ -1596,13 +1630,34 @@ $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Boun
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
+# 顶部品牌条：取自图标的青蓝色，让黑屏上的卡片一眼认得出是 CAScreenGuard
+$accent = New-Object System.Windows.Forms.Panel
+$accent.BackColor = [System.Drawing.Color]::FromArgb(47, 168, 248)
+$accent.SetBounds(0, 0, $cardW, 4)
+$card.Controls.Add($accent)
+
+# 图标：直接用同目录的 CAScreenGuard.ico（四个必需文件之一，必然存在）
+$logoPic = New-Object System.Windows.Forms.PictureBox
+$logoPic.SetBounds([int](($cardW - 32) / 2), 16, 32, 32)
+$logoPic.BackColor = [System.Drawing.Color]::Transparent
+$logoPic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+try {
+    $icoFile = Join-Path $script:ScriptDir 'CAScreenGuard.ico'
+    if (Test-Path -LiteralPath $icoFile) {
+        # 图标对象要保持引用，ToBitmap 之后它还不能被回收
+        $script:LogoIcon = New-Object System.Drawing.Icon($icoFile, 32, 32)
+        $logoPic.Image = $script:LogoIcon.ToBitmap()
+    }
+} catch { }
+$card.Controls.Add($logoPic)
+
 $title = New-Object System.Windows.Forms.Label
 $title.AutoSize = $false
 $title.Text = (T 'k54')
 $title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$title.SetBounds(0, 40, $cardW, 52)
+$title.SetBounds(0, 52, $cardW, 40)
 $card.Controls.Add($title)
 
 $subtitle = New-Object System.Windows.Forms.Label
@@ -1620,6 +1675,7 @@ $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
 $box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 142)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
+$script:BoxPanel = $box          # 事件脚本块看不到局部变量，描边重绘要经 $script: 拿它
 $card.Controls.Add($box)
 
 $script:Txt = New-Object System.Windows.Forms.TextBox
@@ -1693,6 +1749,35 @@ if ($script:Scale -gt 1.01) {
     $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
+
+# 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
+$cardR = [int](18 * $script:Scale)
+if ($cardR -lt 12) { $cardR = 12 }
+$cardPath = New-RoundedPath 0 0 $card.Width $card.Height $cardR
+$card.Region = New-Object System.Drawing.Region($cardPath)
+$cardPath.Dispose()
+$boxPath = New-RoundedPath 0 0 $box.Width $box.Height ([int]($box.Height / 2))
+$box.Region = New-Object System.Drawing.Region($boxPath)
+$boxPath.Dispose()
+
+# 密码框描边：聚焦亮蓝、报错转红、封禁不画（颜色已在暗色底上验证过对比度）
+$box.Add_Paint({
+        param($sender, $e)
+        try {
+            $color = $null
+            if ($script:BoxState -eq 'error') { $color = [System.Drawing.Color]::FromArgb(224, 75, 74) }
+            elseif (($script:BoxState -eq 'normal') -and $script:Txt.Focused) { $color = [System.Drawing.Color]::FromArgb(47, 168, 248) }
+            if ($null -eq $color) { return }
+            $pen = New-Object System.Drawing.Pen($color, [float]1.5)
+            $path = New-RoundedPath 1 1 ($sender.Width - 3) ($sender.Height - 3) ([int](($sender.Height - 3) / 2))
+            $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $e.Graphics.DrawPath($pen, $path)
+            $pen.Dispose()
+            $path.Dispose()
+        } catch { }
+    })
+$script:Txt.Add_GotFocus({ try { $script:BoxPanel.Invalidate() } catch { } })
+$script:Txt.Add_LostFocus({ try { $script:BoxPanel.Invalidate() } catch { } })
 
 # ------------------------------------------------------------------ 事件绑定
 $script:Form.Add_Shown({

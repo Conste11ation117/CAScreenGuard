@@ -1640,12 +1640,6 @@ $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
 
-$accent = New-Object System.Windows.Forms.Panel
-$accent.BackColor = [System.Drawing.Color]::FromArgb(47, 168, 248)
-$accent.SetBounds(0, 0, $cardW, 4)
-$card.Controls.Add($accent)
-
-
 
 $logoMark = New-Object System.Windows.Forms.Panel
 $logoMark.SetBounds([int](($cardW - 40) / 2), 12, 40, 40)
@@ -1809,11 +1803,11 @@ if ($script:Scale -gt 1.01) {
 
 
 $clockW = [int]($card.Width * 1.5)
-$clockH = [int](118 * $script:Scale)
-$dateH = [int](34 * $script:Scale)
+$clockH = [int](150 * $script:Scale)
+$dateH = [int](36 * $script:Scale)
 $clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
 $dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
-$timePt = 54
+$timePt = 68
 $timeTop = $dateY - $clockH
 $clockTopLimit = [int](8 * $script:Scale)
 if ($timeTop -lt $clockTopLimit) {
@@ -1827,8 +1821,10 @@ if ($timeTop -lt $clockTopLimit) {
 }
 $script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
+
+
 $script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
-$script:ClockDate.Font = New-Object System.Drawing.Font($script:FontClock, [float]13)
+$script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
 
 
 $cardR = [int](18 * $script:Scale)

@@ -44,7 +44,6 @@ $script:T = @{
         k04 = 'CAScreenGuard ' + $script:AppVersion + ' · 发生错误'
         k05 = '无法保存密码配置。'
         k06 = "密码错误次数较多，请等待 {0} 秒后再试"
-        k07 = "密码错误次数较多，请等待 {0} 秒后再试"
         k08 = "密码不正确，请等待 {0} 秒后重试"
         k09 = '密码不正确，请重新输入'
         k10 = '本机没有可用的授权码，无法修改解锁密码。请重新运行安装程序。'
@@ -57,7 +56,6 @@ $script:T = @{
         k17 = '确认新密码'
         k18 = '保存'
         k19 = '取消'
-        k20 = '授权码不正确（区分大小写），已失败 {0}/3 次'
         k21 = '新密码至少需要 4 个字符。'
         k22 = '新密码只能用英文、数字和符号，不能用空格和中文。'
         k23 = '两次输入的新密码不一致，请重新输入。'
@@ -77,8 +75,6 @@ $script:T = @{
         k37 = '确认新解锁密码'
         k38 = '确认并继续'
         k39 = '退出'
-        k40 = '授权码区分大小写；连续输错 3 次，这次重建会被取消。'
-        k41 = '授权码不正确（区分大小写），已失败 {0}/3 次'
         k42 = '新密码至少需要 4 个字符。'
         k43 = '新密码只能用英文、数字和符号，不能用空格和中文。'
         k44 = '两次输入的新密码不一致，请重新输入。'
@@ -114,7 +110,6 @@ $script:T = @{
         k04 = "CAScreenGuard " + $script:AppVersion + " · Error"
         k05 = "Could not save the password configuration."
         k06 = "Too many wrong passwords. Please wait {0} seconds and try again."
-        k07 = "Too many wrong passwords. Please wait {0} seconds and try again."
         k08 = "Wrong password. Please wait {0} seconds and try again."
         k09 = "Wrong password, please try again"
         k10 = "No usable authorization code on this machine, so the unlock password cannot be changed. Please run the installer again."
@@ -127,7 +122,6 @@ $script:T = @{
         k17 = "Confirm new password"
         k18 = "Save"
         k19 = "Cancel"
-        k20 = "Wrong authorization code (case-sensitive), failed {0}/3 times"
         k21 = "The new password needs at least 4 characters."
         k22 = "The new password may only use ASCII letters, digits and symbols — no spaces, no non-ASCII."
         k23 = "The two new passwords do not match, please retype."
@@ -147,8 +141,6 @@ $script:T = @{
         k37 = "Confirm the new unlock password"
         k38 = "Continue"
         k39 = "Quit"
-        k40 = "The authorization code is case-sensitive; 3 wrong tries cancel this rebuild."
-        k41 = "Wrong authorization code (case-sensitive), failed {0}/3 times"
         k42 = "The new password needs at least 4 characters."
         k43 = "The new password may only use ASCII letters, digits and symbols — no spaces, no non-ASCII."
         k44 = "The two new passwords do not match, please retype."
@@ -215,7 +207,15 @@ if ($missingFiles.Count -gt 0) {
 
 
 if (-not ('ScreenLockEarly' -as [type])) {
-    Add-Type -Path $csEarly
+    
+    try { Add-Type -Path $csEarly }
+    catch {
+        try {
+            Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, (T 'k04'), 'OK', 'Error') | Out-Null
+        } catch { }
+        exit 1
+    }
 }
 $dpiOk = $false
 try { $dpiOk = [ScreenLockEarly]::SetProcessDpiAwarenessContext([IntPtr]::new(-4)) } catch { }
@@ -237,7 +237,14 @@ try { [System.Windows.Forms.Application]::EnableVisualStyles() } catch { }
 
 
 if (-not ('ScreenLockNative' -as [type])) {
-    Add-Type -Path $csNative
+    
+    try { Add-Type -Path $csNative }
+    catch {
+        try {
+            [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, (T 'k04'), 'OK', 'Error') | Out-Null
+        } catch { }
+        exit 1
+    }
 }
 
 
@@ -374,7 +381,6 @@ $script:ConfigPath = $null
 $script:ConfigRaw = $null           
 $script:IdleBlankMs = [int]$IdleBlankSeconds * 1000
 $script:AllowClose = $false          
-$script:ExitReason = ''
 $script:State = 'Away'          
 $script:BlankTick = [uint32]0       
 $script:LastBlankSent = [datetime]::MinValue
@@ -590,7 +596,7 @@ function New-PasswordRecord {
     if ($null -eq $Auth) { $Auth = $script:Config }
     $salt = New-Object byte[] 16
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    $rng.GetBytes($salt)
+    try { $rng.GetBytes($salt) } finally { $rng.Dispose() }
     $iterations = 120000
     $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, $iterations)
     $hash = $derive.GetBytes(32)
@@ -657,8 +663,10 @@ function Get-ConfigMarker {
     param([string]$Text, [string]$KeyB64)
     $key = [Convert]::FromBase64String($KeyB64)
     $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
-    $data = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    return [Convert]::ToBase64String($hmac.ComputeHash($data))
+    try {
+        $data = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        return [Convert]::ToBase64String($hmac.ComputeHash($data))
+    } finally { $hmac.Dispose() }
 }
 
 function Read-IntegrityStore {
@@ -755,7 +763,8 @@ function Write-IntegrityStore {
 
 function New-IntegrityStore {
     $raw = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($raw)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($raw) } finally { $rng.Dispose() }
     return [pscustomobject]@{
         token          = [guid]::NewGuid().ToString('N')
         markerKey      = [Convert]::ToBase64String($raw)
@@ -815,7 +824,7 @@ function Invoke-SubmitAttempt {
     $now = Get-Date
     if ($script:CooldownActive -and $now -lt $script:CooldownUntil) {
         $left = [Math]::Max(1, [int][Math]::Ceiling(($script:CooldownUntil - $now).TotalSeconds))
-        Show-ErrorMsg ((T 'k07') -f $left)
+        Show-ErrorMsg ((T 'k06') -f $left)
         Invoke-Sound 'warn'
         return
     }
@@ -826,7 +835,6 @@ function Invoke-SubmitAttempt {
     if (Test-PasswordRecord -Password $typed -Record $script:Config) {
         $script:FailCount = 0
         $script:AllowClose = $true
-        $script:ExitReason = 'Unlock'
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
         $script:Form.Close()
@@ -1131,6 +1139,7 @@ function Show-ChangePasswordDialog {
                 if ($script:CpwAuthFails -ge 3) {
                     $script:CpwAuthFails = 0
                     $script:AuthLockedOut = $true
+                    $script:CpwResult = 'toomany'   
                     Set-AuthLockedUI -Dlg $script:CpwDlg -Tip $script:CpwTip -Permanent:$script:AuthBanned
                     return
                 }
@@ -1175,7 +1184,8 @@ function Show-ChangePasswordDialog {
             $script:CpwDlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
         })
     $cancel.Add_Click({
-            $script:CpwResult = 'cancel'
+            
+            if ($script:CpwResult -ne 'toomany') { $script:CpwResult = 'cancel' }
             $script:CpwDlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         })
     $script:CpwAuth.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
@@ -1370,6 +1380,7 @@ function Show-RebuildDialog {
                     
                     $script:DlgFails = 0
                     $script:AuthLockedOut = $true
+                    $script:DlgResult = 'toomany'   
                     Set-AuthBanned
                     $script:AuthBanned = $true
                     Set-AuthLockedUI -Dlg $script:Dlg -Tip $tip -Permanent
@@ -1416,7 +1427,7 @@ function Show-RebuildDialog {
             $script:Dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
         })
     $cancel.Add_Click({
-            $script:DlgResult = 'cancel'
+            if ($script:DlgResult -ne 'toomany') { $script:DlgResult = 'cancel' }
             $script:Dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         })
 

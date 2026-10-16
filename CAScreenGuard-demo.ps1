@@ -550,6 +550,34 @@ function Install-WallpaperBackground {
     } catch { }
 }
 
+# ------------------------------------------------------------------ 解锁过渡
+# 解锁时不做任何"擦除"动作，只是把遮罩的不透明度慢慢降下去 ——
+# 观感上就是屏幕亮度缓缓恢复到正常。
+function Invoke-UnlockTransition {
+    param([switch]$SkipWait)
+    try {
+        if (-not $SkipWait) {
+            # 亮屏请求是丢给后台线程发的，显示器通常要一两百毫秒才真的亮起来，
+            # 先给它一点点时间，动画才不会被"压"在后面看不见
+            Start-Sleep -Milliseconds 150
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+        $steps = 16
+        for ($i = 1; $i -le $steps; $i++) {
+            $t = $i / [double]$steps
+            $alpha = 1.0 - [Math]::Pow($t, 0.7)     # ease-out：前快后慢
+            if ($alpha -lt 0.04) { $alpha = 0.04 }
+            $script:Form.Opacity = $alpha
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 45
+        }
+    }
+    catch {
+        # 动效只是观感：任何一步失败都立刻退回"直接关闭"，绝不影响解锁本身
+        try { $script:Form.Opacity = 1.0 } catch { }
+    }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -986,8 +1014,8 @@ function Invoke-SubmitAttempt {
         $script:AllowClose = $true
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
-        # 直接收掉：遮罩瞬间隐去，让桌面一下子回到眼前。
-        # （试过淡出动画，观感反而更生硬，还白搭半秒，所以不做。）
+        # 遮罩不透明度缓缓降为 0：不是"擦掉"，而是屏幕亮度慢慢恢复正常
+        Invoke-UnlockTransition -SkipWait:$SelfTest
         $script:Form.Close()
         return
     }
@@ -1704,6 +1732,13 @@ $script:Form.ShowInTaskbar = $false
 $script:Form.KeyPreview = $true
 $script:Form.BackColor = [System.Drawing.Color]::Black
 $script:Form.ImeMode = [System.Windows.Forms.ImeMode]::Disable
+# 双缓冲：整屏大图（壁纸）重绘时先画到内存再一次性贴出，
+# 否则肉眼能看到"从上往下一道一道刷出来"的过程（观感很出戏）
+try {
+    $setStyle = $script:Form.GetType().GetMethod('SetStyle', [System.Reflection.BindingFlags]'Instance,NonPublic')
+    $bufferStyles = [System.Windows.Forms.ControlStyles]::UserPaint -bor [System.Windows.Forms.ControlStyles]::AllPaintingInWmPaint -bor [System.Windows.Forms.ControlStyles]::DoubleBuffer -bor [System.Windows.Forms.ControlStyles]::OptimizedDoubleBuffer
+    $null = $setStyle.Invoke($script:Form, @($bufferStyles, $true))
+} catch { }
 
 $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
@@ -2156,7 +2191,16 @@ try {
         }
         else {
             [ScreenLockNative]::MonitorOff()
-            # 屏幕已经熄下去了：现在再慢慢合成壁纸，绘制过程完全不会被看见
+            # 熄屏请求是异步的（只是投递了一条消息），显示器要一两百毫秒才真的灭掉。
+            # 这里等它一秒钟再动笔：壁纸的合成与重绘全程发生在黑屏之后，
+            # 用户就不会看到那道"从上往下刷出来"的过程。
+            try {
+                $deadline = (Get-Date).AddSeconds(1)
+                while ((Get-Date) -lt $deadline) {
+                    [System.Windows.Forms.Application]::DoEvents()
+                    Start-Sleep -Milliseconds 50
+                }
+            } catch { }
             Install-WallpaperBackground
             $script:State = 'Away'
             $script:BlankTick = [ScreenLockNative]::GetLastInputTick()

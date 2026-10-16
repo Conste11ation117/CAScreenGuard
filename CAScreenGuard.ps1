@@ -508,6 +508,34 @@ function Install-WallpaperBackground {
     } catch { }
 }
 
+
+
+
+function Invoke-UnlockTransition {
+    param([switch]$SkipWait)
+    try {
+        if (-not $SkipWait) {
+            
+            
+            Start-Sleep -Milliseconds 150
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+        $steps = 16
+        for ($i = 1; $i -le $steps; $i++) {
+            $t = $i / [double]$steps
+            $alpha = 1.0 - [Math]::Pow($t, 0.7)     
+            if ($alpha -lt 0.04) { $alpha = 0.04 }
+            $script:Form.Opacity = $alpha
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 45
+        }
+    }
+    catch {
+        
+        try { $script:Form.Opacity = 1.0 } catch { }
+    }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -945,7 +973,7 @@ function Invoke-SubmitAttempt {
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
         
-        
+        Invoke-UnlockTransition -SkipWait:$SelfTest
         $script:Form.Close()
         return
     }
@@ -1663,6 +1691,13 @@ $script:Form.KeyPreview = $true
 $script:Form.BackColor = [System.Drawing.Color]::Black
 $script:Form.ImeMode = [System.Windows.Forms.ImeMode]::Disable
 
+
+try {
+    $setStyle = $script:Form.GetType().GetMethod('SetStyle', [System.Reflection.BindingFlags]'Instance,NonPublic')
+    $bufferStyles = [System.Windows.Forms.ControlStyles]::UserPaint -bor [System.Windows.Forms.ControlStyles]::AllPaintingInWmPaint -bor [System.Windows.Forms.ControlStyles]::DoubleBuffer -bor [System.Windows.Forms.ControlStyles]::OptimizedDoubleBuffer
+    $null = $setStyle.Invoke($script:Form, @($bufferStyles, $true))
+} catch { }
+
 $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
 $card.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
@@ -2115,6 +2150,15 @@ try {
         else {
             [ScreenLockNative]::MonitorOff()
             
+            
+            
+            try {
+                $deadline = (Get-Date).AddSeconds(1)
+                while ((Get-Date) -lt $deadline) {
+                    [System.Windows.Forms.Application]::DoEvents()
+                    Start-Sleep -Milliseconds 50
+                }
+            } catch { }
             Install-WallpaperBackground
             $script:State = 'Away'
             $script:BlankTick = [ScreenLockNative]::GetLastInputTick()

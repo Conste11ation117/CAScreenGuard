@@ -1,4 +1,4 @@
-# 中间产物
+﻿# 中间产物
 obj/
 dist/
 chk.dll
@@ -16,3 +16,6 @@ chk.dll
 # 打包出来的目录：里面是根目录同文件的副本，只为做"离线包"用，不进版本库
 CAScreenGuard-All/
 CAScreenGuard-Setup-windows-x86/
+# 误操作产生的嵌套仓库与临时文件（待机主回来清理），绝不能提交
+/CAScreenGuard/
+/zz-preview-tmp.ps1

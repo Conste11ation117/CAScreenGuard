@@ -64,7 +64,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          TITLE="$GITHUB_REF_NAME Navigator"        # 与 v1.0.0 的 "v1.0.0 Navigator" 保持同一命名
+          # 代号写在 CHANGELOG 的版本标题里（例如 "## [2.0.0] — 2026-10-16 Eclipse"）：
+          # 有代号就用 "<tag> <代号>"，没有就只写 tag —— 现在只有大版本才给代号
+          VER="${GITHUB_REF_NAME#v}"
+          CODE=$(grep -m1 "^## \[$VER\]" CHANGELOG.md | sed "s/^## \[$VER\][^0-9]*[0-9][0-9]*-[0-9][0-9]*-[0-9][0-9]//" | tr -d "\r" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")
+          TITLE="$GITHUB_REF_NAME"
+          if [ -n "$CODE" ]; then TITLE="$GITHUB_REF_NAME $CODE"; fi
+          echo "title = [$TITLE]"
           # 重推同一个标签（比如重写了历史）时，直接在原来那份 Release 上更新，
           # 别再 create 一次 —— 否则 gh 会报 "already exists"，Actions 上就是个红叉。
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

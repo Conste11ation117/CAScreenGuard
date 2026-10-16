@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 
 
 
-$script:AppVersion = 'V1.0.1'
+$script:AppVersion = 'V2.0.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'

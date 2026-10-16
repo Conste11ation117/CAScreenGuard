@@ -8,7 +8,7 @@
 
 *How was this built?*
 
-*Co-developed with DeepSeek v4.1 flash, Kimi Code, and DeepSeek Harness.*
+*Co-developed with DeepSeek v4.1 flash, Kimi Code, DeepSeek Harness, and WorkBuddy.*
 
 A tiny Windows tool that keeps an eye on your screen while you are away: it turns the monitor off
 (**only the monitor** — no sleep, no session lock, the machine stays awake), covers everything with a

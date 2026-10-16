@@ -7,7 +7,7 @@
 **在主机处于无人值守状态下，保持长流程的工作正常进行并保护您后台正在进行的工作和私密文件免于任何不可察觉的偷窥、窃取和破解手段**
 
 # 此软件如何编写？
-*与DeepSeek v4.1 flash和Kimi Code、DeepSeek Harness共同构建。*
+*与DeepSeek v4.1 flash和Kimi Code、DeepSeek Harness、WorkBuddy共同构建。*
 
 走开时让它替你看着屏幕：**只关显示器**（不休眠、不锁定 Windows 会话、保持系统唤醒），
 最上层盖一层全屏遮罩挡住桌面内容；只有输对解锁密码，才会恢复屏幕并退出。

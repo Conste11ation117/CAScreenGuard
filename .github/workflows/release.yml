@@ -1,4 +1,4 @@
-# 打一个 v* 标签推上来，GitHub 就会自动：
+﻿# 打一个 v* 标签推上来，GitHub 就会自动：
 #   1. 在标签指向的那个提交上现打一份「全部文件」的 zip
 #   2. 从 CHANGELOG.md 里摘出这一版的说明当正文
 #   3. 建 Release 并把 zip 挂上去
@@ -64,7 +64,8 @@ jobs:
           # 重推同一个标签（比如重写了历史）时，直接在原来那份 Release 上更新，
           # 别再 create 一次 —— 否则 gh 会报 "already exists"，Actions 上就是个红叉。
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file release-notes.md
+            # --draft=false：万一远端已经有一份同名草稿（手工建的），也一并发布出来
+            gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file release-notes.md --draft=false
             gh release upload "$GITHUB_REF_NAME" CAScreenGuard-All.zip CAScreenGuard-Setup-windows-x86.zip --clobber
           else
             gh release create "$GITHUB_REF_NAME" \

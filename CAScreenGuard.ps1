@@ -435,24 +435,6 @@ function New-RoundedPath {
     return $p
 }
 
-function Test-FontInstalled {
-    param([string]$Name)
-    try {
-        foreach ($f in [System.Drawing.FontFamily]::Families) { if ($f.Name -eq $Name) { return $true } }
-    } catch { }
-    return $false
-}
-
-function Get-MonoFontName {
-    
-    
-    foreach ($cand in @('JetBrains Mono ExtraLight', 'JetBrains Mono Thin', 'JetBrains Mono Light',
-            'JetBrains Mono', 'Cascadia Mono', 'Consolas', 'Lucida Console', 'Segoe UI')) {
-        if (Test-FontInstalled $cand) { return $cand }
-    }
-    return 'Segoe UI'
-}
-
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -1617,7 +1599,7 @@ else {
 
 $family = 'Microsoft YaHei UI'
 $cardW = 580
-$cardH = 352                          
+$cardH = 380                          
 
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'CAScreenGuard'
@@ -1641,8 +1623,28 @@ $script:Form.Controls.Add($card)
 
 
 
+$titleText = (T 'k54')
+$titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
+
+$titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
+$logoSize = 32
+$logoGap = 12
+$titleY = 74
+$groupX = [int](($cardW - ($logoSize + $logoGap + $titleW)) / 2)
+
+$title = New-Object System.Windows.Forms.Label
+$title.AutoSize = $false
+$title.Text = $titleText
+$title.Font = $titleFont
+$title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
+$title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+$title.SetBounds($groupX + $logoSize + $logoGap, $titleY, $titleW + 8, 44)
+$card.Controls.Add($title)
+
+
+
 $logoMark = New-Object System.Windows.Forms.Panel
-$logoMark.SetBounds([int](($cardW - 40) / 2), 12, 40, 40)
+$logoMark.SetBounds($groupX, $titleY + [int]((44 - $logoSize) / 2), $logoSize, $logoSize)
 $logoMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)   
 $logoMark.Add_Paint({
         param($sender, $e)
@@ -1668,29 +1670,20 @@ $logoMark.Add_Paint({
     })
 $card.Controls.Add($logoMark)
 
-$title = New-Object System.Windows.Forms.Label
-$title.AutoSize = $false
-$title.Text = (T 'k54')
-$title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
-$title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
-$title.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$title.SetBounds(0, 54, $cardW, 36)
-$card.Controls.Add($title)
-
 $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.AutoSize = $false
 $subtitle.Text = (T 'k55')
 $subtitle.Font = New-Object System.Drawing.Font($family, [float]10.5)
 $subtitle.ForeColor = [System.Drawing.Color]::FromArgb(152, 158, 166)
 $subtitle.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$subtitle.SetBounds(0, 96, $cardW, 26)
+$subtitle.SetBounds(0, 122, $cardW, 26)
 $card.Controls.Add($subtitle)
 
 $boxW = 400
 $boxH = 52
 $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
-$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 142)
+$box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 170)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
 $script:BoxPanel = $box          
 $card.Controls.Add($box)
@@ -1712,7 +1705,7 @@ $script:TxtError.AutoSize = $false
 $script:TxtError.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:TxtError.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110)
 $script:TxtError.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$script:TxtError.SetBounds(0, 206, $cardW, 24)
+$script:TxtError.SetBounds(0, 234, $cardW, 24)
 $script:TxtError.Visible = $false
 $card.Controls.Add($script:TxtError)
 
@@ -1725,7 +1718,7 @@ if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
 $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$footer1.SetBounds(0, 242, $cardW, 22)
+$footer1.SetBounds(0, 270, $cardW, 22)
 $card.Controls.Add($footer1)
 
 $footer2 = New-Object System.Windows.Forms.Label
@@ -1742,15 +1735,15 @@ $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:LockNotice.ForeColor = [System.Drawing.Color]::FromArgb(255, 96, 96)
 $script:LockNotice.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:LockNotice.Text = (T 'k63') + "`r`n" + (T 'k64')
-$script:LockNotice.SetBounds(0, 292, $cardW, 52)
+$script:LockNotice.SetBounds(0, 318, $cardW, 52)
 $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
-$footer2.SetBounds(0, 266, $cardW, 22)
+$footer2.SetBounds(0, 292, $cardW, 22)
 $card.Controls.Add($footer2)
 
 
 
-$script:FontClock = Get-MonoFontName
+
 $script:ClockTime = New-Object System.Windows.Forms.Label
 $script:ClockTime.AutoSize = $false
 $script:ClockTime.BackColor = [System.Drawing.Color]::Transparent
@@ -1803,10 +1796,10 @@ if ($script:Scale -gt 1.01) {
 
 
 $clockW = [int]($card.Width * 1.5)
-$clockH = [int](150 * $script:Scale)
+$clockH = [int](136 * $script:Scale)   
 $dateH = [int](36 * $script:Scale)
 $clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
-$dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
+$dateY = [int]($card.Top - (22 * $script:Scale) - $dateH)   
 $timePt = 68
 $timeTop = $dateY - $clockH
 $clockTopLimit = [int](8 * $script:Scale)
@@ -1815,15 +1808,13 @@ if ($timeTop -lt $clockTopLimit) {
     
     $avail = $dateY - $clockTopLimit
     if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
-    $timePt = [Math]::Max(16, [Math]::Round(54 * ($avail / [double]$clockH), 1))
+    $timePt = [Math]::Max(16, [Math]::Round(68 * ($avail / [double]$clockH), 1))
     $clockH = $avail
     $timeTop = $clockTopLimit
 }
 $script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
-
-
-$script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
+$script:ClockTime.Font = New-Object System.Drawing.Font($family, [float]$timePt)
 $script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
 
 

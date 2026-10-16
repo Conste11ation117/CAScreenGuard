@@ -435,6 +435,47 @@ function New-RoundedPath {
     return $p
 }
 
+function Get-WallpaperBitmap {
+    
+    
+    try {
+        $path = $null
+        try { $path = [ScreenLockNative]::GetDesktopWallpaperPath() } catch { }
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) {
+            
+            $trans = Join-Path $env:APPDATA 'Microsoft\Windows\Themes\TranscodedWallpaper'
+            if (Test-Path -LiteralPath $trans) { $path = $trans }
+        }
+        if (-not $path) { return $null }
+
+        $src = $null
+        try { $src = [System.Drawing.Image]::FromFile($path) } catch { return $null }
+        try {
+            $vw = $script:Form.Bounds.Width
+            $vh = $script:Form.Bounds.Height
+            if ($vw -le 0 -or $vh -le 0 -or $src.Width -le 0 -or $src.Height -le 0) { return $null }
+            $out = New-Object System.Drawing.Bitmap($vw, $vh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $g = [System.Drawing.Graphics]::FromImage($out)
+            try {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                
+                $s = [Math]::Max($vw / [double]$src.Width, $vh / [double]$src.Height)
+                $dw = [int][Math]::Ceiling($src.Width * $s)
+                $dh = [int][Math]::Ceiling($src.Height * $s)
+                $g.DrawImage($src, (New-Object System.Drawing.Rectangle([int](($vw - $dw) / 2), [int](($vh - $dh) / 2), $dw, $dh)))
+                
+                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 0, 0, 0))
+                $g.FillRectangle($shade, 0, 0, $vw, $vh)
+                $shade.Dispose()
+            }
+            finally { $g.Dispose() }
+            return $out
+        }
+        finally { $src.Dispose() }
+    }
+    catch { return $null }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -1622,6 +1663,13 @@ $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
 
+$script:Wallpaper = Get-WallpaperBitmap
+if ($script:Wallpaper) {
+    $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
+    $script:Form.BackgroundImage = $script:Wallpaper
+}
+
+
 
 $titleText = (T 'k54')
 $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
@@ -2067,6 +2115,7 @@ finally {
     $script:AllowClose = $true
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
+    try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   
     Restore-SystemState        
     if ($SelfTest) {
         Write-Host ''

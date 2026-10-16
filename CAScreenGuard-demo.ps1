@@ -518,6 +518,19 @@ function Get-WallpaperBitmap {
     catch { return $null }
 }
 
+function Install-WallpaperBackground {
+    # 把壁纸铺到遮罩上（拿不到就保持纯黑）。
+    # 调用时机很关键：合成一张整屏大图要几百毫秒，必须在"屏幕已经熄灭"之后再干，
+    # 否则用户看到的是"黑幕一闪 → 壁纸慢慢出现"。
+    try {
+        $script:Wallpaper = Get-WallpaperBitmap
+        if (-not $script:Wallpaper) { return }
+        $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
+        $script:Form.BackgroundImage = $script:Wallpaper
+        if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
+    } catch { }
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -947,7 +960,8 @@ function Invoke-SubmitAttempt {
         $script:AllowClose = $true
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
-        Invoke-UnlockTransition -SkipWait:$SelfTest
+        # 直接收掉：遮罩瞬间隐去，让桌面一下子回到眼前。
+        # （试过淡出动画，观感反而更生硬，还白搭半秒，所以不做。）
         $script:Form.Close()
         return
     }
@@ -1117,37 +1131,6 @@ function Restore-SystemState {
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
     try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
-}
-
-# ------------------------------------------------------------------ 解锁过渡
-# 解锁时让遮罩淡出，把桌面"交还"给用户，而不是啪一下跳出来。
-# 只做不透明度过渡：锁屏期间遮罩必须完全不透明（这是防窥的前提），
-# 所以不能上什么"毛玻璃/半透明"，否则整块屏幕都变成能看见桌面的状态。
-function Invoke-UnlockTransition {
-    param([switch]$SkipWait)
-    try {
-        if (-not $SkipWait) {
-            # 只等一小会儿：亮屏请求是丢给后台线程发的，显示器通常要一两百毫秒才真的亮。
-            # 这里不等满 —— 淡出本身够长，屏幕在这段时间里亮起来，用户看到的就是
-            # "屏幕亮起的同时遮罩化开"，而不是先干等一秒。
-            Start-Sleep -Milliseconds 150
-            [System.Windows.Forms.Application]::DoEvents()
-        }
-        # 约 0.6 秒的 ease-out 淡出：开头快、收尾慢
-        $steps = 14
-        for ($i = 1; $i -le $steps; $i++) {
-            $t = $i / [double]$steps
-            $alpha = 1.0 - [Math]::Pow($t, 0.6)
-            if ($alpha -lt 0.05) { $alpha = 0.05 }
-            $script:Form.Opacity = $alpha
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 40
-        }
-    }
-    catch {
-        # 动效只是观感：任何一步失败都立刻退回"直接关闭"，绝不影响解锁本身
-        try { $script:Form.Opacity = 1.0 } catch { }
-    }
 }
 
 # ==================================================================
@@ -1704,12 +1687,7 @@ $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Boun
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
 
-# 壁纸背景：拿得到就用（已经铺满并压暗），拿不到就保持纯黑
-$script:Wallpaper = Get-WallpaperBitmap
-if ($script:Wallpaper) {
-    $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
-    $script:Form.BackgroundImage = $script:Wallpaper
-}
+# 壁纸背景不在这一刻画：要等屏幕真的熄下去之后再静默合成（见 Install-WallpaperBackground）
 
 # 标题行：品牌标记放在标题左边、与标题等高，「图标 + 五个字」作为一个整体居中
 # （先把标题的文字宽度量出来，才能算出这一组的起点）
@@ -1884,28 +1862,45 @@ if ($script:Scale -gt 1.01) {
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
 
-# 时钟：贴在卡片上方居中排（也要在 DPI 缩放之后再定位，坐标才和卡片对得上）
-$clockW = [int]($card.Width * 1.5)
-$clockH = [int](136 * $script:Scale)   # 时间带的高度：调小 = 时间整体再往下靠一点（日期位置不变）
-$dateH = [int](36 * $script:Scale)
-$clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
-$dateY = [int]($card.Top - (22 * $script:Scale) - $dateH)   # 别把时钟顶得太靠上
-$timePt = 68
-$timeTop = $dateY - $clockH
-$clockTopLimit = [int](8 * $script:Scale)
-if ($timeTop -lt $clockTopLimit) {
-    # 屏幕不够高（小笔记本 / 低分辨率）：按可用高度等比缩小字号，再贴着上边缘排，
-    # 免得时钟被顶出屏幕
-    $avail = $dateY - $clockTopLimit
-    if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
-    $timePt = [Math]::Max(16, [Math]::Round(68 * ($avail / [double]$clockH), 1))
-    $clockH = $avail
-    $timeTop = $clockTopLimit
-}
-$script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
-$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
-$script:ClockTime.Font = New-Object System.Drawing.Font($family, [float]$timePt)
-$script:ClockDate.Font = New-Object System.Drawing.Font($family, [float]14)
+# ------------------------------------------------------------------ 时钟与卡片的最终定位
+# 时钟按 Windows 11 锁屏的实测比例排：参考图（Win11 锁屏，1366x768 / 100% 缩放）量得
+#   时间：数字高 71px（=71 DIP）、顶边距屏幕顶 162 DIP，粗体
+#   日期：字形高约 20 DIP（含降部），与时间底边相隔 32 DIP，粗体
+#   两行都水平居中
+# 1 DIP = $script:Scale 个物理像素，所以下面的数字都乘这个系数。
+$primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$ox = $primaryNow.X - $script:Form.Bounds.X
+$oy = $primaryNow.Y - $script:Form.Bounds.Y
+
+$fontTime = New-Object System.Drawing.Font($family, [float]74, [System.Drawing.FontStyle]::Bold)
+$fontDate = New-Object System.Drawing.Font($family, [float]17, [System.Drawing.FontStyle]::Bold)
+$script:ClockTime.Font = $fontTime
+$script:ClockDate.Font = $fontDate
+$script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(245, 246, 248)
+$script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
+
+$clockW = [int]($primaryNow.Width * 0.8)
+$clockX = [int]($ox + ($primaryNow.Width - $clockW) / 2)
+$timeH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockTime.Text, $fontTime).Height
+$dateH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockDate.Text, $fontDate).Height
+# 标签内部有一段行距：字形顶边会比标签顶边低约 0.26em（实测得出），定位时要减掉，
+# 否则时间会比 Win11 的锁屏位置低一大截
+$timeLeadDip = 0.257 * 74 * 96.0 / 72.0
+$dateLeadDip = 0.257 * 17 * 96.0 / 72.0
+$timeTop = [int]($oy + (162 - $timeLeadDip) * $script:Scale)
+$dateTop = [int]($oy + (162 + 71 + 32 - $dateLeadDip) * $script:Scale)
+$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
+$script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
+
+# 卡片：竖直落在主屏 58.5% 处（Win11 的登录框也是在时钟下方偏下），
+# 但至少要让开时钟，也不能被屏幕底边切掉
+$cardTop = [int]($oy + $primaryNow.Height * 0.585 - $card.Height / 2)
+$minTop = $dateTop + $dateH + [int](28 * $script:Scale)
+if ($cardTop -lt $minTop) { $cardTop = $minTop }
+$maxTop = [int]($oy + $primaryNow.Height - $card.Height - 16 * $script:Scale)
+if ($cardTop -gt $maxTop -and $maxTop -gt $minTop) { $cardTop = $maxTop }
+$card.Left = [int]($ox + ($primaryNow.Width - $card.Width) / 2)
+$card.Top = $cardTop
 
 # 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
 $cardR = [int](18 * $script:Scale)
@@ -2124,11 +2119,15 @@ try {
     if (-not $SelfTest) { New-RunningFlag }   # 正常退出时会删掉它；下次还看到就说明这次没正常结束
     if (-not $SelfTest) {
         if ($script:AutoReset) {
-            # -ResetPassword：这次是专门来改密码的，不熄屏，直接把修改窗口摆出来
+            # -ResetPassword：这次是专门来改密码的，不熄屏 —— 那就先把壁纸画好再显示窗口，
+            # 免得用户看到"黑幕一闪 → 壁纸出现"
+            Install-WallpaperBackground
             $script:State = 'Prompt'
         }
         else {
             [ScreenLockNative]::MonitorOff()
+            # 屏幕已经熄下去了：现在再慢慢合成壁纸，绘制过程完全不会被看见
+            Install-WallpaperBackground
             $script:State = 'Away'
             $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
             $script:LastBlankSent = Get-Date

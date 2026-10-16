@@ -163,6 +163,10 @@ password literal.
   - **no crash log** → it did not crash: someone may have pressed the power button, signed out or shut
     down via `Ctrl+Alt+Del`, or simply killed the process. You are advised to change your Windows
     password, run a virus scan, check the physical safety of your workspace, and reinstall.
+- There is also a running log at `%LOCALAPPDATA%\CAScreenGuard\guard.log`: startup/exit, sleep resume,
+  failed wake-request re-issues and UI-thread exceptions, truncated automatically past 64 KB. It contains
+  **no user name, machine name, path or PID**, so it is safe to send in for troubleshooting (only
+  `crash-*.log` carries `user@machine` and the pid — that one is a local file, no need to send it).
 
 ---
 
@@ -184,6 +188,12 @@ Notes:
   shortcut's own "Shortcut key" field — no background process, no autostart entry)
 - Registers an entry in "Apps & features" (publisher `Conste11ation117`); uninstalling removes the registry
   keys, the external credentials, the desktop shortcut and **the whole installation folder**
+- **If the location you picked is not writable** (say `C:\Program Files`) the installer shows the complete
+  reason (exception type and `HResult` included, selectable and copyable) and offers **"Retry as
+  administrator"**: once you approve the Windows permission prompt (UAC), an elevation helper creates the
+  folder and grants write access to your current account, and the installation continues. The password and
+  authorization code never travel on the command line; the installed files are owned by you, so later
+  config writes, logs and uninstalling need no elevation.
 - Launched through `conhost --headless`, so **no console window flashes**
 - The language you pick is written into the external credentials, and the installed program follows it
 

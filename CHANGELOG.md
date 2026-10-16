@@ -6,8 +6,9 @@ and versioning adheres to [Semantic Versioning](https://semver.org/).
 
 ## [2.0.0] — 2026-10-16 Eclipse
 
-The lock screen becomes a real screen. This release is about how it looks and feels; the behaviour is
-unchanged.
+The lock screen becomes a real screen. This release is mostly about how it looks and feels; on top of that
+it closes two gaps: a location you cannot write to now offers a way forward instead of a clipped one-liner,
+and a wake request that lapsed across sleep/hibernate is now re-issued.
 
 ### New look
 
@@ -48,6 +49,38 @@ unchanged.
 - The icon was redrawn: only the two large letters **SG** remain inside the black square — the product name
   and the key are gone, because both turned into mush below 48 px. Small frames are now written as BMP,
   which stops .NET/GDI from decoding PNG frames into colour noise.
+
+### Installer: a way out when the location is not writable
+
+- Installing into a location you cannot write to (say `C:\Program Files`) used to produce a single red line
+  504 px wide while the message itself measures 931 px — the "underlying error" half was always clipped by
+  the control, so users could not report anything useful. A failure now opens a dialog with the **complete
+  reason** (exception type + `HResult` + message, selectable and copyable) and a shield-bearing
+  **"Retry as administrator"** button.
+- The elevation step does exactly two things: create the installation folder and grant write access to
+  **your current account**. So the password and authorization code never travel on the command line (other
+  processes can read command lines), and the installed files are owned by you — later config writes, logs
+  and uninstalling need no elevation at all.
+- The elevation helper only accepts a folder named `CAScreenGuard-<date>`, so it cannot be abused as a
+  general "grant write access anywhere" tool; it never touches the password or the configuration — that
+  code path does not contain them. If the target folder already holds something, it is still refused: only
+  an empty folder we just created is adopted.
+
+### Stability
+
+- **Periodic wake-request re-check**: `SetThreadExecutionState` is per-thread, and a request may no longer
+  count after sleep/hibernate. It is now re-issued every 30 seconds; a failed re-issue (return value 0) is
+  recorded.
+- **Sleep-resume detection**: the timer runs at 250 ms, so a gap of more than 5 seconds between two ticks is
+  treated as "probably just resumed from sleep" — keep-awake is re-issued, the mask is pushed back to the
+  top, and the screen is blanked again if it was blank.
+- **UI-thread exception fallback**: an event handler that throws no longer takes the whole process down
+  (the mask stays); it is recorded and the program keeps running. Such *handled* exceptions are
+  deliberately kept out of `crash-*.log`, so the next launch does not report a crash that never happened.
+- **`guard.log`**: `%LOCALAPPDATA%\CAScreenGuard\guard.log` records startup/exit, the two events above and
+  UI-thread exceptions, truncated automatically past 64 KB. It contains **no user name, machine name, path
+  or PID** — it is meant to be sent in for troubleshooting; `crash-*.log` is a local file and still carries
+  `user@machine` and the pid.
 
 ## [1.1.0] — 2026-10-15
 

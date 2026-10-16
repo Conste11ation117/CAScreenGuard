@@ -906,6 +906,7 @@ function Invoke-SubmitAttempt {
         $script:AllowClose = $true
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
+        Invoke-UnlockTransition -SkipWait:$SelfTest
         $script:Form.Close()
         return
     }
@@ -1074,6 +1075,37 @@ function Restore-SystemState {
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
     try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
+}
+
+# ------------------------------------------------------------------ 解锁过渡
+# 解锁时让遮罩淡出，把桌面"交还"给用户，而不是啪一下跳出来。
+# 只做不透明度过渡：锁屏期间遮罩必须完全不透明（这是防窥的前提），
+# 所以不能上什么"毛玻璃/半透明"，否则整块屏幕都变成能看见桌面的状态。
+function Invoke-UnlockTransition {
+    param([switch]$SkipWait)
+    try {
+        if (-not $SkipWait) {
+            # 只等一小会儿：亮屏请求是丢给后台线程发的，显示器通常要一两百毫秒才真的亮。
+            # 这里不等满 —— 淡出本身够长，屏幕在这段时间里亮起来，用户看到的就是
+            # "屏幕亮起的同时遮罩化开"，而不是先干等一秒。
+            Start-Sleep -Milliseconds 150
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+        # 约 0.6 秒的 ease-out 淡出：开头快、收尾慢
+        $steps = 14
+        for ($i = 1; $i -le $steps; $i++) {
+            $t = $i / [double]$steps
+            $alpha = 1.0 - [Math]::Pow($t, 0.6)
+            if ($alpha -lt 0.05) { $alpha = 0.05 }
+            $script:Form.Opacity = $alpha
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 40
+        }
+    }
+    catch {
+        # 动效只是观感：任何一步失败都立刻退回"直接关闭"，绝不影响解锁本身
+        try { $script:Form.Opacity = 1.0 } catch { }
+    }
 }
 
 # ==================================================================
@@ -1636,20 +1668,34 @@ $accent.BackColor = [System.Drawing.Color]::FromArgb(47, 168, 248)
 $accent.SetBounds(0, 0, $cardW, 4)
 $card.Controls.Add($accent)
 
-# 图标：直接用同目录的 CAScreenGuard.ico（四个必需文件之一，必然存在）
-$logoPic = New-Object System.Windows.Forms.PictureBox
-$logoPic.SetBounds([int](($cardW - 32) / 2), 16, 32, 32)
-$logoPic.BackColor = [System.Drawing.Color]::Transparent
-$logoPic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
-try {
-    $icoFile = Join-Path $script:ScriptDir 'CAScreenGuard.ico'
-    if (Test-Path -LiteralPath $icoFile) {
-        # 图标对象要保持引用，ToBitmap 之后它还不能被回收
-        $script:LogoIcon = New-Object System.Drawing.Icon($icoFile, 32, 32)
-        $logoPic.Image = $script:LogoIcon.ToBitmap()
-    }
-} catch { }
-$card.Controls.Add($logoPic)
+# 品牌标记：直接用代码画那两块倾斜的彩块（与程序图标同源，但不依赖 .ico 解码，
+# 任何 DPI 下都是矢量级清晰）
+$logoMark = New-Object System.Windows.Forms.Panel
+$logoMark.SetBounds([int](($cardW - 40) / 2), 12, 40, 40)
+$logoMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)   # 与卡片同色，等于透明
+$logoMark.Add_Paint({
+        param($sender, $e)
+        try {
+            $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $f = [float]$sender.Width
+            $side = $f * 0.62
+            $radius = $f * 0.16
+            $layers = @(
+                @{ cx = 0.40 * $f; cy = 0.40 * $f; color = [System.Drawing.Color]::FromArgb(47, 168, 248) },
+                @{ cx = 0.60 * $f; cy = 0.60 * $f; color = [System.Drawing.Color]::FromArgb(124, 77, 255) })
+            foreach ($layer in $layers) {
+                $path = New-RoundedPath (-$side / 2) (-$side / 2) $side $side $radius
+                $mtx = New-Object System.Drawing.Drawing2D.Matrix
+                $mtx.RotateAt(-10, (New-Object System.Drawing.PointF(0, 0)))
+                $mtx.Translate([float]$layer.cx, [float]$layer.cy)
+                $path.Transform($mtx)
+                $brush = New-Object System.Drawing.SolidBrush $layer.color
+                $e.Graphics.FillPath($brush, $path)
+                $brush.Dispose(); $path.Dispose(); $mtx.Dispose()
+            }
+        } catch { }
+    })
+$card.Controls.Add($logoMark)
 
 $title = New-Object System.Windows.Forms.Label
 $title.AutoSize = $false
@@ -1657,7 +1703,7 @@ $title.Text = (T 'k54')
 $title.Font = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-$title.SetBounds(0, 52, $cardW, 40)
+$title.SetBounds(0, 54, $cardW, 36)
 $card.Controls.Add($title)
 
 $subtitle = New-Object System.Windows.Forms.Label

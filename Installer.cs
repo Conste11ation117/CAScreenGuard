@@ -73,7 +73,7 @@ public static class Str
         { "k57", "这个路径不能用来安装，请换一个文件夹。" },
         { "k58", "这里已经有「" },
         { "k59", "」了：请换一个位置，或者先把它删掉。" },
-        { "k60", "没有权限往这个位置写文件。请换一个文件夹，或者用默认位置。" },
+        { "k60", "没有权限写入安装需要的位置。请换一个文件夹，或者用默认位置（就在你自己的用户目录下）。若换位置也一样，多半是杀毒软件或「受控文件夹访问」在拦截。底层错误：{0}" },
         { "k61", "写入安装文件时出错：" },
         { "k62", "安装失败：" },
         { "k63", "安装 " },
@@ -149,7 +149,7 @@ public static class Str
         { "k57", "That path cannot be used for installation, please pick another folder." },
         { "k58", "There is already “" },
         { "k59", "” here: pick another location, or delete it first." },
-        { "k60", "No permission to write there. Please pick another folder, or use the default location." },
+        { "k60", "No permission to write where the installer needs to. Pick another folder, or use the default location inside your own user profile. If every folder fails the same way it is almost always antivirus or Defender Controlled folder access. Underlying error: {0}" },
         { "k61", "Error while writing the installation files: " },
         { "k62", "Installation failed: " },
         { "k63", "Install " },
@@ -503,10 +503,10 @@ public class CAScreenGuardInstaller
         try
         {
             Directory.CreateDirectory(dir);
-            // 探针：确认这个位置真的写得进去（真失败也发生在旧安装还完好的时候）
-            string probe = Path.Combine(dir, ".write-probe");
-            File.WriteAllText(probe, "ok");
-            File.Delete(probe);
+            // 不要在这里写探针文件（例如 .write-probe）：杀软和 Windows Defender 的
+            // "受控文件夹访问"专门拦这种可疑名字，探针被拦就会被当成"没权限"而劝退 ——
+            // 而那个位置其实是能写的。用户看到的现象就是"无论装到哪里都说没有权限"。
+            // 权限判定只留 Directory.CreateDirectory 这一处（它抛就说明真写不进去）。
         }
         catch
         {
@@ -1309,7 +1309,7 @@ public class SetupForm : Form
             ok = true;
         }
         // 三类失败各有各的说法，但"恢复光标和按钮"这一步是共用的 —— 放在 finally 里，不会漏
-        catch (UnauthorizedAccessException) { Fail(Str.S("k60")); }
+        catch (UnauthorizedAccessException ex) { Fail(String.Format(Str.S("k60"), ex.Message)); }
         catch (IOException ex) { Fail(Str.S("k61") + ex.Message); }
         catch (Exception ex) { Fail(Str.S("k62") + ex.Message); }
         finally

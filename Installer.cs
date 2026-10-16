@@ -87,7 +87,12 @@ public static class Str
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
         { "k72", "正在安装：可能需要 3~10 秒，请耐心等待，不要关闭这个窗口。" },
         { "k73", "」。\n\n" },
-        { "k74", "\n\n提示：有项目没能删掉（可能被杀软或权限拦住），外部凭证可能仍有残留。" },    };
+        { "k74", "\n\n提示：有项目没能删掉（可能被杀软或权限拦住），外部凭证可能仍有残留。" },
+        { "k75", "以管理员身份重试" },
+        { "k76", "关闭" },
+        { "k77", "这个位置需要管理员权限才能写。点「以管理员身份重试」之后会弹出 Windows 授权提示（UAC）；同意后安装会继续，并且把安装目录的写权限授给你当前这个账户 —— 以后程序自己写配置和日志就不用再提权。" },
+        { "k78", "已经用管理员权限试过一次，还是没能写入：\n" },
+        { "k79", "没有拿到管理员授权（在 UAC 提示上选了「否」），安装没有继续。" },    };
     static readonly System.Collections.Generic.Dictionary<string, string> EN = new System.Collections.Generic.Dictionary<string, string>
     {
         { "k01", "ERROR: missing arguments" },
@@ -163,7 +168,12 @@ public static class Str
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
         { "k72", "Installing: this may take 3-10 seconds. Please wait and do not close this window." },
         { "k73", "\u201d.\n\n" },
-        { "k74", "\n\nNote: some items could not be removed (antivirus or permissions). External credentials may still be left behind." },    };
+        { "k74", "\n\nNote: some items could not be removed (antivirus or permissions). External credentials may still be left behind." },
+        { "k75", "Retry as administrator" },
+        { "k76", "Close" },
+        { "k77", "This location needs administrator rights. After you choose \u201cRetry as administrator\u201d Windows shows its permission prompt (UAC); once you approve, the installation continues and write access to the installation folder is granted to your current account \u2014 so the program can write its own configuration and logs later without elevation." },
+        { "k78", "Tried again with administrator rights, but the location still could not be written to:\n" },
+        { "k79", "Administrator permission was not granted (you chose \u201cNo\u201d in the UAC prompt), so the installation did not continue." },    };
     public static string S(string key)
     {
         var d = (Lang == "en") ? EN : ZH;
@@ -256,6 +266,13 @@ public class CAScreenGuardInstaller
 
         try
         {
+            // 提权助手模式：安装器以管理员身份被自己拉起来过一次，只做"建目录 + 授权"这件事。
+            // 放在最前面，而且不弹任何界面 —— 用户看到的只是 UAC 那一下。
+            if (args.Length >= 3 && args[0].Equals("/prepare-dir", StringComparison.OrdinalIgnoreCase))
+            {
+                Environment.Exit(PrepareDirElevated(args[1], args[2]));
+                return;
+            }
             if (args.Length > 0 && args[0].Equals("/uninstall", StringComparison.OrdinalIgnoreCase))
             {
                 bool silent = args.Length > 1 && args[1].Equals("/quiet", StringComparison.OrdinalIgnoreCase);
@@ -489,7 +506,13 @@ public class CAScreenGuardInstaller
     }
     // ---------- 安装 ----------
     // baseDir 是用户在向导里选的"装到哪里"，真正的安装目录是它下面的「CAScreenGuard-当天日期」
+    // dirPreparedByUs：提权助手刚替我们建好目录、并把写权限授给了当前用户，这一次要认下它
     public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey)
+    {
+        return Install(baseDir, lockPwd, authCode, authHint, createLink, hotkeyKey, false);
+    }
+
+    public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey, bool dirPreparedByUs)
     {
         string dir = Path.Combine(baseDir, SubFolderName);
         // 顺序有讲究：**先确认新位置能用，再销毁旧安装**。
@@ -498,7 +521,10 @@ public class CAScreenGuardInstaller
         // 授权码将永久找不回来，改密码与"配置重建"两条路一起废。
         if (Directory.Exists(dir))
         {
-            return Str.S("k04") + dir + Str.S("k05");
+            // 提权助手建完目录会留下一个空目录，这是唯一允许"接管"的情况，而且只认空目录 ——
+            // 里面有东西就说明不是我们刚建的，照旧报"已经有同名的了"。
+            bool adopt = dirPreparedByUs && Directory.GetFileSystemEntries(dir).Length == 0;
+            if (!adopt) { return Str.S("k04") + dir + Str.S("k05"); }
         }
         try
         {
@@ -728,6 +754,84 @@ public class CAScreenGuardInstaller
             psi.UseShellExecute = false;
             psi.WorkingDirectory = sys;
             Process.Start(psi);
+        }
+        catch { }
+    }
+
+    // ---------- 提权助手（只建目录 + 授权，永远不接触密码） ----------
+    // 用户在 C:\Program Files 这类位置装的时候，安装器自己是写不进去的。
+    // 做法：再拉一个自己的副本、以管理员身份跑一次这一段，让它只干"建好那个目录、
+    // 把写权限授给发起安装的那个账户"；然后没提权的这一边接着往里装。
+    // 这么拆的三个好处：密码/授权码永远不会出现在命令行（命令行是别的进程能读到的）；
+    // 提权的那半边代码小、只碰目录权限，不碰密码和配置；装完的文件所有者是你自己，
+    // 以后程序写配置、日志、卸载都不需要再提权。
+    internal static string CurrentUserSid()
+    {
+        try { return System.Security.Principal.WindowsIdentity.GetCurrent().User.Value; }
+        catch { return ""; }
+    }
+
+    // SID 只允许 S-1-5-21-... 这种形状：它会被拼进 icacls 的命令行，不能带引号空格等杂字符
+    static bool LooksLikeSid(string s)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length < 5) { return false; }
+        if (s[0] != 'S' || s[1] != '-') { return false; }
+        for (int i = 2; i < s.Length; i++)
+        {
+            if (!char.IsDigit(s[i]) && s[i] != '-') { return false; }
+        }
+        return true;
+    }
+
+    // 提权那一侧的执行体。返回：0=成功，1223=用户在 UAC 上点了「否」，其余非 0=失败。
+    // 只认本程序自己的「CAScreenGuard-日期」目录名，免得这个开关被当成"给任意目录授权"的工具。
+    internal static int PrepareDirElevated(string dir, string sid)
+    {
+        // 每一步的失败都留一行现场：这个进程一闪就退，没有日志就无从查起
+        if (string.IsNullOrEmpty(dir) || !Path.IsPathRooted(dir)) { WritePrepareLog(dir, sid, 1, "路径不是绝对路径"); return 1; }
+        string clean = dir.TrimEnd('\\');
+        string leaf = Path.GetFileName(clean);
+        if (string.IsNullOrEmpty(leaf) || !leaf.StartsWith(AppName + "-", StringComparison.OrdinalIgnoreCase)) { WritePrepareLog(clean, sid, 2, "目录名不是 CAScreenGuard- 开头"); return 2; }
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(clean))) { WritePrepareLog(clean, sid, 3, "拒绝操作盘根"); return 3; }   // 别去动盘根
+        if (!LooksLikeSid(sid)) { WritePrepareLog(clean, sid, 4, "SID 形状不对"); return 4; }
+        try { Directory.CreateDirectory(clean); }
+        catch (Exception ex) { WritePrepareLog(clean, sid, 5, "建目录失败：" + ex.GetType().Name + " " + ex.Message); return 5; }
+        return GrantWrite(clean, sid) ? 0 : 6;
+    }
+
+    // icacls "目录" /grant *SID:(OI)(CI)M —— 用 SID 授权，不受账户显示名/语言影响
+    static bool GrantWrite(string dir, string sid)
+    {
+        try
+        {
+            ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe"));
+            psi.Arguments = "\"" + dir + "\" /grant *" + sid + ":(OI)(CI)M";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            // 不把子进程的输出读掉的话，管道写满了 icacls 会卡住不退出
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            using (Process p = Process.Start(psi))
+            {
+                p.StandardOutput.ReadToEnd();
+                string err = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(60000)) { try { p.Kill(); } catch { } return false; }
+                if (p.ExitCode == 0) { return true; }
+                WritePrepareLog(dir, sid, p.ExitCode, err);
+                return false;
+            }
+        }
+        catch (Exception ex) { WritePrepareLog(dir, sid, -1, ex.Message); return false; }
+    }
+
+    // 提权那一步失败时留个现场：它自己的窗口一闪就没了，没有这个文件就无从查起
+    static void WritePrepareLog(string dir, string sid, int code, string detail)
+    {
+        try
+        {
+            string path = Path.Combine(Path.GetTempPath(), "sg_prepare_dir.log");
+            File.AppendAllText(path, DateTime.Now.ToString("s") + "  dir=" + dir + "  sid=" + sid +
+                               "  code=" + code + "\n" + detail + "\n\n", new UTF8Encoding(false));
         }
         catch { }
     }
@@ -1242,6 +1346,65 @@ public class SetupForm : Form
         lblError.Update();   // 安装是同步跑的，不立刻重画的话这条提示根本来不及显示
     }
 
+    // 安装本身失败（不是表单校验）走这里。状态行只有 504px 宽，而 k60 正文量出来就有 931px：
+    // 超出的部分被控件直接裁掉，而"底层错误"恰恰在最后 —— 用户看到的就是一句半截话，
+    // 反馈不出任何有用信息。所以照旧写状态行，另外再弹一个对话框把整段显示出来（里面能选中复制）。
+    // 需要提权时这个对话框会多给一个带盾牌的「以管理员身份重试」，用户点了才返回 true。
+    bool ShowFailure(string msg, bool offerElevate)
+    {
+        Fail(msg);
+        using (FailureForm f = new FailureForm(msg, offerElevate))
+        {
+            f.ShowDialog(this);
+            return f.Retry;
+        }
+    }
+
+    // 跑一次安装，把结果翻译成人能看的话。canElevate 只在"没权限"这一种失败上为 true。
+    bool TryInstall(string baseDir, string pwd, string auth, string hint, bool link, string hotkey, bool dirPrepared,
+                    out string msg, out string failure, out bool canElevate)
+    {
+        msg = ""; failure = ""; canElevate = false;
+        try
+        {
+            msg = CAScreenGuardInstaller.Install(baseDir, pwd, auth, hint, link, hotkey, dirPrepared);
+            return true;
+        }
+        catch (UnauthorizedAccessException ex) { canElevate = true; failure = String.Format(Str.S("k60"), Describe(ex)); }
+        catch (IOException ex) { failure = Str.S("k61") + Describe(ex); }
+        catch (Exception ex) { failure = Str.S("k62") + Describe(ex); }
+        return false;
+    }
+
+    // 拉一个自己的副本、以管理员身份跑 /prepare-dir：让它建好安装目录并把写权限授给我。
+    // 返回 0=成功；1223=用户在 UAC 上点了「否」；其它=失败。密码不进命令行，这里只传目录和 SID。
+    int ElevatePrepareDir(string dir)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo(Application.ExecutablePath);
+        psi.Arguments = "/prepare-dir \"" + dir + "\" " + CAScreenGuardInstaller.CurrentUserSid();
+        psi.UseShellExecute = true;      // 只有走 ShellExecute 才能带 runas
+        psi.Verb = "runas";
+        try
+        {
+            using (Process p = Process.Start(psi))
+            {
+                if (!p.WaitForExit(180000)) { try { p.Kill(); } catch { } return 9; }
+                return p.ExitCode;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception wex) { return wex.NativeErrorCode; }   // 1223 = 用户拒绝
+        catch { return 9; }
+    }
+
+    // 异常的类型名和 HResult 一定在，ex.Message 却可能为空（个别异常不给说明文字）。
+    // 只打 Message 的话，用户看到的是"底层错误："后面什么都没有 —— 连往哪查都无从下手。
+    static string Describe(Exception ex)
+    {
+        string head = ex.GetType().Name + " 0x" + ex.HResult.ToString("X8");
+        if (string.IsNullOrEmpty(ex.Message)) { return head; }
+        return head + "：" + ex.Message;
+    }
+
     void OnBrowse(object sender, EventArgs e)
     {
         using (FolderBrowserDialog d = new FolderBrowserDialog())
@@ -1297,7 +1460,9 @@ public class SetupForm : Form
         }
 
         string msg = "";
-        bool ok = false;
+        string failure = "";
+        bool canElevate = false;
+        bool ok;
         Cursor = Cursors.WaitCursor;
         // Install 在 UI 线程上同步跑 3~10 秒，期间窗口会被系统标记"未响应"，先禁掉免得被反复点
         btnInstall.Enabled = false;
@@ -1305,13 +1470,29 @@ public class SetupForm : Form
         Status(Str.S("k72"));
         try
         {
-            msg = CAScreenGuardInstaller.Install(full, pwd, auth, hint, chkLink.Checked, hotkey);
-            ok = true;
+            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, false, out msg, out failure, out canElevate);
+            if (!ok)
+            {
+                // 写不进去 → 问一句要不要以管理员身份再来一次（盾牌按钮）；别的失败就只是报告
+                if (canElevate)
+                {
+                    if (ShowFailure(failure, true))
+                    {
+                        int rc = ElevatePrepareDir(target);
+                        if (rc == 1223) { failure = Str.S("k79"); }
+                        else if (rc != 0) { failure = Str.S("k78") + failure; }
+                        else
+                        {
+                            Status(Str.S("k72"));
+                            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, true, out msg, out failure, out canElevate);
+                            if (!ok) { failure = Str.S("k78") + failure; }
+                        }
+                        if (!ok) { ShowFailure(failure, false); }
+                    }
+                }
+                else { ShowFailure(failure, false); }
+            }
         }
-        // 三类失败各有各的说法，但"恢复光标和按钮"这一步是共用的 —— 放在 finally 里，不会漏
-        catch (UnauthorizedAccessException ex) { Fail(String.Format(Str.S("k60"), ex.Message)); }
-        catch (IOException ex) { Fail(Str.S("k61") + ex.Message); }
-        catch (Exception ex) { Fail(Str.S("k62") + ex.Message); }
         finally
         {
             Cursor = Cursors.Default;
@@ -1321,6 +1502,107 @@ public class SetupForm : Form
 
         MessageBox.Show(this, msg, Str.S("k63") + CAScreenGuardInstaller.AppName + " " + CAScreenGuardInstaller.AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Information);
         DialogResult = DialogResult.OK;
+        Close();
+    }
+}
+
+// ---------- 失败详情对话框 ----------
+// 为什么不用 MessageBox：它的文字不能选中复制，长文本也照样被裁；而这里要显示的那段
+// 恰恰是用户唯一能反馈给我们的东西。所以用只读多行文本框把整段摊开，需要提权时再补一个盾牌按钮。
+public class FailureForm : Form
+{
+    public bool Retry;
+    float s = 1F;
+    int S(int v) { return (int)Math.Round(v * (double)s); }
+
+    public FailureForm(string msg, bool offerElevate)
+    {
+        AutoScaleMode = AutoScaleMode.None;
+        using (Graphics g = CreateGraphics()) { s = g.DpiX / 96F; }
+        if (s < 1F) { s = 1F; }
+
+        Text = CAScreenGuardInstaller.AppName + " " + CAScreenGuardInstaller.AppVersion;
+        Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterParent;
+        int h = offerElevate ? 286 : 232;
+        ClientSize = new Size(S(560), S(h));
+
+        int top = 16;
+        if (offerElevate)
+        {
+            PictureBox pic = new PictureBox();
+            pic.Image = SystemIcons.Shield.ToBitmap();
+            pic.SizeMode = PictureBoxSizeMode.AutoSize;
+            pic.Location = new Point(S(20), S(top));
+            pic.BackColor = Color.Transparent;
+            Controls.Add(pic);
+        }
+
+        TextBox txt = new TextBox();
+        txt.Multiline = true;
+        txt.ReadOnly = true;
+        txt.WordWrap = true;
+        txt.ScrollBars = ScrollBars.Vertical;
+        txt.BackColor = Color.White;
+        txt.BorderStyle = BorderStyle.FixedSingle;
+        txt.Text = msg;
+        txt.Location = new Point(S(offerElevate ? 66 : 20), S(top));
+        txt.Size = new Size(S(offerElevate ? 474 : 520), S(152));
+        Controls.Add(txt);
+
+        if (offerElevate)
+        {
+            Label hint = new Label();
+            hint.Text = Str.S("k77");
+            hint.AutoSize = false;
+            hint.Location = new Point(S(20), S(178));
+            hint.Size = new Size(S(520), S(52));
+            hint.ForeColor = Color.FromArgb(60, 68, 80);
+            hint.BackColor = Color.Transparent;
+            Controls.Add(hint);
+        }
+
+        Button btnRetry = null;
+        if (offerElevate)
+        {
+            btnRetry = new Button();
+            btnRetry.Text = Str.S("k75");
+            btnRetry.Location = new Point(S(316), S(offerElevate ? 238 : 190));
+            btnRetry.Size = new Size(S(134), S(30));
+            btnRetry.Click += new EventHandler(OnRetry);
+            Controls.Add(btnRetry);
+        }
+
+        Button btnClose = new Button();
+        btnClose.Text = Str.S("k76");
+        btnClose.Location = new Point(S(offerElevate ? 458 : 456), S(offerElevate ? 238 : 190));
+        btnClose.Size = new Size(S(82), S(30));
+        btnClose.Click += new EventHandler(OnClose);
+        Controls.Add(btnClose);
+
+        // 默认键给「关闭」：回车不该顺手把 UAC 拉起来
+        CancelButton = btnClose;
+        AcceptButton = btnClose;
+        // 这里刻意不设 ActiveControl：试过让焦点落在「关闭」上，避开只读文本框一拿到焦点就整段全选
+        // 的难看样子，结果构造函数直接把进程搞崩了（反射探针里 OnInstall 没返回、窗口 0x0 就消失）。
+        // 全选其实也不算坏事 —— 用户点一下框子就能 Ctrl+C 把整段错误发给作者。
+    }
+
+    void OnRetry(object sender, EventArgs e)
+    {
+        Retry = true;
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
+    void OnClose(object sender, EventArgs e)
+    {
+        Retry = false;
+        DialogResult = DialogResult.Cancel;
         Close();
     }
 }

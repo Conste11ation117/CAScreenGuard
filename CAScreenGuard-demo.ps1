@@ -507,8 +507,8 @@ function Get-WallpaperBitmap {
                 $dw = [int][Math]::Ceiling($src.Width * $s)
                 $dh = [int][Math]::Ceiling($src.Height * $s)
                 $g.DrawImage($src, (New-Object System.Drawing.Rectangle([int](($vw - $dw) / 2), [int](($vh - $dh) / 2), $dw, $dh)))
-                # 暗色遮罩：压掉壁纸的亮度，卡片和时钟的对比度才够
-                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 0, 0, 0))
+                # 暗色遮罩：压掉壁纸的亮度，卡片和时钟的对比度才够（140 → 176：再压暗一档）
+                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(176, 0, 0, 0))
                 $g.FillRectangle($shade, 0, 0, $vw, $vh)
                 $shade.Dispose()
             }

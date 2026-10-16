@@ -466,7 +466,7 @@ function Get-WallpaperBitmap {
                 $dh = [int][Math]::Ceiling($src.Height * $s)
                 $g.DrawImage($src, (New-Object System.Drawing.Rectangle([int](($vw - $dw) / 2), [int](($vh - $dh) / 2), $dw, $dh)))
                 
-                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 0, 0, 0))
+                $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(176, 0, 0, 0))
                 $g.FillRectangle($shade, 0, 0, $vw, $vh)
                 $shade.Dispose()
             }

@@ -191,7 +191,7 @@ public class CAScreenGuardInstaller
     internal const string NativeLeaf = "ScreenLockNative.cs";
     internal const string LnkLeaf = "CAScreenGuard.lnk";
     internal const string AppName = "CAScreenGuard";
-    internal const string AppVersion = "V1.0.0";
+    internal const string AppVersion = "V1.0.1";
     const string CfgLeaf = ".cascreenguard.config.json";
     const string StoreKey = @"Software\CAScreenGuard";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CAScreenGuard";

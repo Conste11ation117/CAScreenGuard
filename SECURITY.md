@@ -1,4 +1,4 @@
-# Security Policy
+﻿# Security Policy
 
 ## What this project is (and is not)
 
@@ -16,9 +16,12 @@ It *does*:
 It deliberately does *not*:
 
 - lock the Windows session, encrypt the disk, hide running processes, or block network access
-- block `Ctrl+Alt+Del` — that is the Secure Attention Sequence, and no user-mode program can intercept it
-- protect against anyone who can modify the program. Replacing the script with one that skips the
-  password check, or simply killing the process, defeats it. **Any user-mode screen cover works this way.**
+- intercept `Ctrl+Alt+Del` — and it does not need to: nothing on that screen exposes the desktop.
+  Sign-out and shutdown end the session (or reboot), so it is never revealed and the flag file records
+  it; Task Manager does start, but the mask re-asserts itself on top every 250 ms and takes focus back
+- protect against anyone who can modify the program files, or end the process by other means (another
+  account, the disk mounted elsewhere). **Any user-mode screen cover works this way.** The flag file
+  tells you afterwards.
 
 If you need real confidentiality, use Windows lock (`Win+L`) together with BitLocker, and do not rely on
 a screen-covering tool.

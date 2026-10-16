@@ -61,7 +61,7 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ 界面语言
 # 显示在所有弹出窗口标题里的版本号
-$script:AppVersion = 'V1.0.0'
+$script:AppVersion = 'V1.0.1'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'

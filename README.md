@@ -14,7 +14,7 @@ A tiny Windows tool that keeps an eye on your screen while you are away: it turn
 (**only the monitor** — no sleep, no session lock, the machine stays awake), covers everything with a
 full-screen black mask, and only the correct unlock password brings the screen back.
 
-- Version: **V1.0.0**
+- Version: **V1.0.1**
 - Author: **@Conste11ation117**
 - Requirements: Windows 10 / 11 with Windows PowerShell 5.1 (built in — nothing to install)
 - License: [MIT](LICENSE)
@@ -30,7 +30,7 @@ written to disk, so reopening the program will not lift it.*
 **How to get it:** `git clone` this repository, or grab `CAScreenGuard-Setup.exe` from
 [Releases](https://github.com/Conste11ation117/CAScreenGuard/releases) (the file in the repo is the same one).
 Double-click the wizard and you are done in about two minutes. The release also ships
-`CAScreenGuard-v1.0.0-all.zip` — the same package, for copying to a machine offline.
+`CAScreenGuard-v1.0.1-all.zip` — the same package, for copying to a machine offline.
 
 ---
 
@@ -47,8 +47,12 @@ running long jobs where you want the screen hidden but the session alive.
 you need an actual security boundary.
 
 > It stops a passer-by from glancing at your screen. It does not stop someone who deliberately digs
-> into your machine. It does not lock the Windows session, does not encrypt anything, and cannot block
-> `Ctrl+Alt+Del` (that is the Secure Attention Sequence — no user-mode program can intercept it).
+> into your machine. It does not lock the Windows session and does not encrypt anything.
+>
+> Nor does it need to intercept `Ctrl+Alt+Del`: **nothing on that screen exposes your desktop.**
+> Sign-out and shutdown end the session (or reboot) — the desktop never becomes visible, and the flag
+> file records that it happened. Task Manager does start, but the mask re-asserts itself on top every
+> 250 ms and takes focus straight back, so there is nothing on it you can click.
 
 If you need confidentiality, use Windows lock (`Win+L`) plus BitLocker.
 
@@ -252,5 +256,6 @@ note or in the hint, use `Win+L` + BitLocker when you really need secrecy, and u
 - Every input box disables the IME; passwords and codes are ASCII-only
 - The mask covers the whole virtual desktop (all monitors)
 - The system is kept awake while locked, which drains a laptop battery
-- It cannot block `Ctrl+Alt+Del`, and it does not survive someone killing the process (though the flag
-  file will tell you it happened)
+- `Ctrl+Alt+Del` is **not** an opening: nothing on that screen reveals the desktop (see §2)
+- Not covered: someone who can modify the program files, or end the process by other means (another
+  account, the disk mounted elsewhere) — the flag file only reports it afterwards

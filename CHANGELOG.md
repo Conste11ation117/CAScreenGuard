@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] — 2026-10-15
+
+A full review pass over the codebase, plus a correction to how `Ctrl+Alt+Del` was described.
+
+### Fixed
+
+- **The shutdown / crash monitor never ran.** The whole block sat inside the "another instance is
+  already running" branch, so a normal start skipped it (the feature the docs described was dead
+  code) — while starting a second copy *did* run it, wrongly reporting an unclean exit and deleting
+  the running instance's flag file. Moved out of that branch; verified with a syntax-tree check.
+- **Reinstalling could destroy your authorization code for good.** The old install (registry key and
+  the `%APPDATA%` credentials — the only home of the auth-code hash) was deleted *before* the new
+  location was validated. Reinstalling to an unwritable folder, or to one that already had that day's
+  subfolder, left you with no new install and an unrecoverable authorization code. The new location is
+  now checked and probed first; a failed drop cleans up after itself instead of leaving a folder that
+  makes every retry say "already exists".
+- **Choosing 简体中文 on a non-Chinese Windows never stuck.** `Str.Detect()` ran in the wizard's
+  constructor, so reopening the wizard after a language switch overwrote the choice with the system
+  language — and the `Lang` written to the registry was always `en`.
+- The uninstaller looked for the runtime state in `%LOCALAPPDATA%\CAScreenGuard\state`, which never
+  exists (the script writes `running.flag` / `crash-*.log` one level up), so uninstalling left those
+  files behind. It now removes exactly those files — deleting the whole folder would have taken the
+  install directory with it at the default location.
+- The screen-saver setting could stay disabled forever: the original value only lived in memory, so a
+  killed process or a power loss never restored it. It is now written to disk first.
+- Timer errors went into a variable nobody read. They now go to `tick-errors.log` — putting them in
+  `crash-*.log` would have had the next start report them as "the software crashed".
+- `GetLastInputTick()` returned `0` on failure, which collides with a legal tick value and with the
+  initial `BlankTick`; it now returns `uint.MaxValue` (the self-test accepts neither).
+- `/silent` skipped every input check: `setup.exe /silent <dir> "" "" ""` installed an empty unlock
+  password. It now runs the same validation as the wizard.
+- Deleting the desktop shortcut did not notify the shell, so its global hotkey lingered until sign-out.
+- English UI no longer leaks Chinese punctuation (`」。`, full-width brackets).
+- `k59` split: the "your configuration was tampered with" paragraph is now only shown on the rebuild
+  path, not in the ordinary change-password window.
+- Installing disables the install button while it works; `Main` has a top-level `try/catch`; a missing
+  payload now gives a readable error instead of a Base-64 exception.
+- Dead code removed (`WaitForMonitorWork`, `HideConsole`); `monitorTarget` / `BlockSystemKeys` are
+  `volatile`; `AttachThreadInput` is released in a `finally`.
+- Version strings in popup titles are built from one constant instead of 18 hard-coded literals
+  (also removes a second, independent `DisplayVersion` in the installer).
+
+### Build pipeline
+
+- The comment stripper no longer runs a per-line "drop blank lines / trim trailing whitespace" pass:
+  it does not understand tokens and silently shortened the contents of here-strings and verbatim
+  strings — with both the parse check and the compile check staying green.
+- Block comments keep their line breaks (removing them could glue tokens: `int/**/y` → `inty`).
+- BOM normalisation strictly validates UTF-8 instead of silently substituting bytes, which used to
+  rewrite an ANSI/GBK source file in place, irreversibly.
+- The compile staging directory must be an ASCII path (`csc` cannot handle non-ASCII arguments).
+- The no-icon retry is checked for its exit code; `#Requires` matching is case-sensitive.
+- The release workflow's file list is verified against `git ls-files`, so a new file cannot be
+  silently dropped from the zip.
+
+### Docs
+
+- Corrected the runtime state path, the offline package name, and the missing `-Ver` entry.
+- **Removed the claim that `Ctrl+Alt+Del` is a weakness.** Nothing on that screen exposes the desktop:
+  sign-out and shutdown end the session (or reboot), so it is never revealed, and the flag file records
+  it; Task Manager does start, but the mask re-asserts itself on top every 250 ms and takes focus back,
+  so there is nothing on it you can click.
+
 ## [1.0.0] — 2026-10-14
 
 First public release.
@@ -65,7 +128,7 @@ First public release.
 ### Bilingual UI & version number
 
 - Both the main program and the installer ship with Chinese and English UI text built in. Language priority: command-line `-Lang` > chosen at install time > system display language.
-- All popup window titles include the version number, e.g. `CAScreenGuard V1.0.0 · Configuration needs to be rebuilt`.
+- All popup window titles include the version number, e.g. `CAScreenGuard V1.0.1 · Configuration needs to be rebuilt`.
 
 ### Icon
 
@@ -91,8 +154,9 @@ First public release.
 ### Known limits (important)
 
 - It is a **visual barrier**, not a security boundary: it does not encrypt the disk, does not hide running programs, and does not block network access.
-- `Ctrl+Alt+Del` is the system's Secure Attention Sequence; no user-mode program can intercept it.
+- `Ctrl+Alt+Del` is not an opening: nothing on that screen exposes the desktop.
 - Anyone who can modify the program can bypass it (swap the script, or just kill the process); elevating privileges would only block "a non-elevated process cannot kill it" — at the cost of a UAC prompt every launch, higher antivirus sensitivity, and a larger attack surface — which is not worth it for the goal of "stopping a passer-by from glancing at your screen".
-- Known not to block: user-initiated Sleep, lid close (if lid close is set to Sleep in power settings), and shutdown after `Ctrl+Alt+Del`.
+- Known not to block: user-initiated Sleep, lid close (if lid close is set to Sleep in power settings), and a sign-out / shutdown started from the `Ctrl+Alt+Del` screen (they end the session rather than revealing it).
 
+[1.0.1]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.0.0

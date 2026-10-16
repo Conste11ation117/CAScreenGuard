@@ -435,6 +435,24 @@ function New-RoundedPath {
     return $p
 }
 
+function Test-FontInstalled {
+    param([string]$Name)
+    try {
+        foreach ($f in [System.Drawing.FontFamily]::Families) { if ($f.Name -eq $Name) { return $true } }
+    } catch { }
+    return $false
+}
+
+function Get-MonoFontName {
+    
+    
+    foreach ($cand in @('JetBrains Mono ExtraLight', 'JetBrains Mono Thin', 'JetBrains Mono Light',
+            'JetBrains Mono', 'Cascadia Mono', 'Consolas', 'Lucida Console', 'Segoe UI')) {
+        if (Test-FontInstalled $cand) { return $cand }
+    }
+    return 'Segoe UI'
+}
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -928,6 +946,7 @@ function Invoke-GuardTick {
         }
 
         Update-CooldownMessage
+        Update-Clock
 
         
         if (-not $script:DlgOpen) {
@@ -1737,6 +1756,40 @@ $card.Controls.Add($footer2)
 
 
 
+$script:FontClock = Get-MonoFontName
+$script:ClockTime = New-Object System.Windows.Forms.Label
+$script:ClockTime.AutoSize = $false
+$script:ClockTime.BackColor = [System.Drawing.Color]::Transparent
+$script:ClockTime.ForeColor = [System.Drawing.Color]::FromArgb(238, 238, 242)
+$script:ClockTime.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$script:Form.Controls.Add($script:ClockTime)
+
+$script:ClockDate = New-Object System.Windows.Forms.Label
+$script:ClockDate.AutoSize = $false
+$script:ClockDate.BackColor = [System.Drawing.Color]::Transparent
+$script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(150, 156, 164)
+$script:ClockDate.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$script:Form.Controls.Add($script:ClockDate)
+
+function Update-Clock {
+    
+    try {
+        $now = Get-Date
+        $timeText = $now.ToString('HH:mm')
+        if ($script:ClockTime.Text -ne $timeText) { $script:ClockTime.Text = $timeText }
+        if ($script:Lang -eq 'zh') {
+            $dateText = $now.ToString('M月d日 dddd', [System.Globalization.CultureInfo]::GetCultureInfo('zh-CN'))
+        }
+        else {
+            $dateText = $now.ToString('dddd, MMM d', [System.Globalization.CultureInfo]::GetCultureInfo('en-US'))
+        }
+        if ($script:ClockDate.Text -ne $dateText) { $script:ClockDate.Text = $dateText }
+    } catch { }
+}
+Update-Clock
+
+
+
 
 if ($script:Scale -gt 1.01) {
     $script:Form.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
@@ -1753,6 +1806,29 @@ if ($script:Scale -gt 1.01) {
     $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
+
+
+$clockW = [int]($card.Width * 1.5)
+$clockH = [int](118 * $script:Scale)
+$dateH = [int](34 * $script:Scale)
+$clockX = [int]($card.Left + ($card.Width - $clockW) / 2)
+$dateY = [int]($card.Top - (44 * $script:Scale) - $dateH)
+$timePt = 54
+$timeTop = $dateY - $clockH
+$clockTopLimit = [int](8 * $script:Scale)
+if ($timeTop -lt $clockTopLimit) {
+    
+    
+    $avail = $dateY - $clockTopLimit
+    if ($avail -lt [int](44 * $script:Scale)) { $avail = [int](44 * $script:Scale) }
+    $timePt = [Math]::Max(16, [Math]::Round(54 * ($avail / [double]$clockH), 1))
+    $clockH = $avail
+    $timeTop = $clockTopLimit
+}
+$script:ClockDate.SetBounds($clockX, $dateY, $clockW, $dateH)
+$script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $clockH)
+$script:ClockTime.Font = New-Object System.Drawing.Font($script:FontClock, [float]$timePt)
+$script:ClockDate.Font = New-Object System.Drawing.Font($script:FontClock, [float]13)
 
 
 $cardR = [int](18 * $script:Scale)

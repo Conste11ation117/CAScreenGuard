@@ -85,7 +85,9 @@ public static class Str
         { "k69", "欢迎" },
         { "k70", "上一页" },
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
-        { "k72", "正在安装：可能需要 3~10 秒，请耐心等待，不要关闭这个窗口。" },    };
+        { "k72", "正在安装：可能需要 3~10 秒，请耐心等待，不要关闭这个窗口。" },
+        { "k73", "」。\n\n" },
+        { "k74", "\n\n提示：有项目没能删掉（可能被杀软或权限拦住），外部凭证可能仍有残留。" },    };
     static readonly System.Collections.Generic.Dictionary<string, string> EN = new System.Collections.Generic.Dictionary<string, string>
     {
         { "k01", "ERROR: missing arguments" },
@@ -159,7 +161,9 @@ public static class Str
         { "k69", "Welcome" },
         { "k70", "Back" },
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
-        { "k72", "Installing: this may take 3-10 seconds. Please wait and do not close this window." },    };
+        { "k72", "Installing: this may take 3-10 seconds. Please wait and do not close this window." },
+        { "k73", "\u201d.\n\n" },
+        { "k74", "\n\nNote: some items could not be removed (antivirus or permissions). External credentials may still be left behind." },    };
     public static string S(string key)
     {
         var d = (Lang == "en") ? EN : ZH;
@@ -213,6 +217,33 @@ public class CAScreenGuardInstaller
     [DllImport("user32.dll")]
     static extern bool SetProcessDPIAware();
 
+    static bool PayloadsLookSane()
+    {
+        // 忘了跑 build-setup.ps1 就直接拿 csc 编的话，四个占位符还是字面量：编译能过，
+        // 到 Convert.FromBase64String 才炸，用户看到的是一句莫名其妙的 Base-64 报错。
+        string[] ps = new string[] { PAYLOAD_PS1, PAYLOAD_ICO, PAYLOAD_EARLY, PAYLOAD_NATIVE };
+        foreach (string s in ps)
+        {
+            if (s == null || s.Length < 64 || s.IndexOf('{') >= 0) { return false; }
+        }
+        return true;
+    }
+
+    // 静默安装也走一遍和向导相同的输入校验。不校验的话，
+    // `setup.exe /silent <dir> "" "" ""` 会装出一个"回车即解锁"的空密码配置，而且没有任何提示。
+    static string ValidateSilentInputs(string dir, string pwd, string auth, string hint, bool wantHotkey, string hotkey)
+    {
+        if (dir == null || dir.Trim().Length == 0) { return Str.S("k47"); }
+        if (pwd == null || pwd.Length < 4) { return Str.S("k48"); }
+        if (!IsPlainAscii(pwd)) { return Str.S("k49"); }
+        if (auth == null || auth.Trim().Length < 6) { return Str.S("k51"); }
+        if (!IsPlainAscii(auth.Trim())) { return Str.S("k52"); }
+        if (string.Equals(auth.Trim(), pwd, StringComparison.Ordinal)) { return Str.S("k54"); }
+        if (hint == null || hint.Trim().Length == 0) { return Str.S("k55"); }
+        if (wantHotkey && hotkey != null && hotkey.Trim().Length > 0 && !IsHotkeyKey(hotkey)) { return Str.S("k56"); }
+        return null;
+    }
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -220,31 +251,53 @@ public class CAScreenGuardInstaller
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        if (args.Length > 0 && args[0].Equals("/uninstall", StringComparison.OrdinalIgnoreCase))
+        // 界面语言的初值只在这里定一次（构造函数里再 Detect 会覆盖掉用户的选择）
+        Str.Detect();
+
+        try
         {
-            bool silent = args.Length > 1 && args[1].Equals("/quiet", StringComparison.OrdinalIgnoreCase);
-            DoUninstall(silent);
-            return;
-        }
-        if (args.Length > 0 && args[0].Equals("/silent", StringComparison.OrdinalIgnoreCase))
-        {
-            // /silent <装到哪里> <解锁密码> <授权码> <提示> [nolink] [快捷键字母，空=不要]
-            string msg;
-            if (args.Length >= 5)
+            if (args.Length > 0 && args[0].Equals("/uninstall", StringComparison.OrdinalIgnoreCase))
             {
-                bool link = !(args.Length > 5 && args[5].Equals("nolink", StringComparison.OrdinalIgnoreCase));
-                string hk = (args.Length > 6) ? args[6] : "";
-                try { msg = Install(args[1], args[2], args[3], args[4], link, hk); }
-                catch (Exception ex) { msg = "ERROR: " + ex.ToString(); }
+                bool silent = args.Length > 1 && args[1].Equals("/quiet", StringComparison.OrdinalIgnoreCase);
+                DoUninstall(silent);
+                return;
             }
-            else { msg = Str.S("k01"); }
-            File.WriteAllText(Path.Combine(Path.GetTempPath(), "sg_setup_silent.log"), msg, new UTF8Encoding(false));
-            return;
+            if (args.Length > 0 && args[0].Equals("/silent", StringComparison.OrdinalIgnoreCase))
+            {
+                // /silent <装到哪里> <解锁密码> <授权码> <提示> [nolink] [快捷键字母，空=不要]
+                string msg;
+                if (!PayloadsLookSane()) { msg = "ERROR: installer payload is missing - build with build-setup.ps1"; }
+                else if (args.Length >= 5)
+                {
+                    bool link = !(args.Length > 5 && args[5].Equals("nolink", StringComparison.OrdinalIgnoreCase));
+                    string hk = (args.Length > 6) ? args[6] : "";
+                    msg = ValidateSilentInputs(args[1], args[2], args[3], args[4], link, hk);
+                    if (msg == null)
+                    {
+                        try { msg = Install(args[1], args[2], args[3], args[4], link, hk); }
+                        catch (Exception ex) { msg = "ERROR: " + ex.ToString(); }
+                    }
+                }
+                else { msg = Str.S("k01"); }
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "sg_setup_silent.log"), msg, new UTF8Encoding(false)); } catch { }
+                return;
+            }
+            if (!PayloadsLookSane())
+            {
+                MessageBox.Show("ERROR: installer payload is missing - build with build-setup.ps1",
+                                AppName + " " + AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            while (true) {
+                SetupForm sf = new SetupForm();
+                Application.Run(sf);
+                if (sf.DialogResult != DialogResult.Retry) { break; }
+            }
         }
-        while (true) {
-            SetupForm sf = new SetupForm();
-            Application.Run(sf);
-            if (sf.DialogResult != DialogResult.Retry) { break; }
+        catch (Exception ex)
+        {
+            // 向导路径里任何漏网的异常都别让用户看到 .NET 的原始错误框，也不要静默退出
+            try { MessageBox.Show(ex.Message, AppName + " " + AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
         }
     }
 
@@ -376,16 +429,48 @@ public class CAScreenGuardInstaller
             {
                 try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
             }
+            // 目录自身带只读/隐藏属性时，Directory.Delete(recursive) 一样会失败；
+            // 失败又会被上层判成"删不掉 → 程序还在运行"，把用户引到错误方向
+            foreach (string d in Directory.GetDirectories(dir, "*", SearchOption.AllDirectories))
+            {
+                try { File.SetAttributes(d, FileAttributes.Normal); } catch { }
+            }
             Directory.Delete(dir, true);
         }
         catch { }
         return !Directory.Exists(dir);
     }
 
-    // 程序运行时在 %LOCALAPPDATA%\CAScreenGuard\state 下放标记文件与崩溃日志
+    // 程序运行时在 %LOCALAPPDATA%\CAScreenGuard 下放标记文件、崩溃日志与屏保原值。
+    // 路径必须和脚本里的 $script:StateDir 一致 —— 这里以前多写了一层 "state"，
+    // 结果卸载时删的是个从不存在的目录，真正的运行现场一份都没被清掉。
     internal static string StateDir
     {
-        get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CAScreenGuard", "state"); }
+        get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CAScreenGuard"); }
+    }
+
+    // 只删运行现场的那几个文件，绝不整树删 StateDir ——
+    // 用默认安装位置时 StateDir 正是安装目录的上一层，整树删会把安装目录一起端掉。
+    static void RemoveStateFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(StateDir)) { return; }
+            foreach (string f in new string[] { "running.flag", "screen-saver-original.json", "tick-errors.log" })
+            {
+                try
+                {
+                    string p = Path.Combine(StateDir, f);
+                    if (File.Exists(p)) { File.SetAttributes(p, FileAttributes.Normal); File.Delete(p); }
+                }
+                catch { }
+            }
+            foreach (string p in Directory.GetFiles(StateDir, "crash-*.log"))
+            {
+                try { File.SetAttributes(p, FileAttributes.Normal); File.Delete(p); } catch { }
+            }
+        }
+        catch { }
     }
 
     // 把"安装/运行时创建、现在空了"的文件夹删掉；里面还有别的东西就绝不碰
@@ -406,10 +491,29 @@ public class CAScreenGuardInstaller
     // baseDir 是用户在向导里选的"装到哪里"，真正的安装目录是它下面的「CAScreenGuard-当天日期」
     public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey)
     {
-        // 本机装过就直接重装：先把上一次那一整套（程序、配置、整个文件夹）端掉，再干净地装一份。
-        // 顺序是有意的 —— 文件夹先删，删不掉就当场退出，
-        // 免得凭证已经删了、旧文件夹却还在，变成"既装不上、又开不了"的烂摊子。
         string dir = Path.Combine(baseDir, SubFolderName);
+        // 顺序有讲究：**先确认新位置能用，再销毁旧安装**。
+        // 反过来的话，用户把位置换到一个已经有同名文件夹、或者根本没权限写的地方时，
+        // 旧安装的注册表与 APPDATA 镜像（授权码哈希唯一的家）已经被删掉，新安装又失败 ——
+        // 授权码将永久找不回来，改密码与"配置重建"两条路一起废。
+        if (Directory.Exists(dir))
+        {
+            return Str.S("k04") + dir + Str.S("k05");
+        }
+        try
+        {
+            Directory.CreateDirectory(dir);
+            // 探针：确认这个位置真的写得进去（真失败也发生在旧安装还完好的时候）
+            string probe = Path.Combine(dir, ".write-probe");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+        }
+        catch
+        {
+            try { Directory.Delete(dir, true); } catch { }
+            throw;
+        }
+        // 本机装过就直接重装：把上一次那一整套（程序、配置、整个文件夹）端掉
         if (AlreadyInstalled())
         {
             string oldDir = InstalledDir();
@@ -428,18 +532,22 @@ public class CAScreenGuardInstaller
             try { string mdir = MirrorDir; if (Directory.Exists(mdir) && Directory.GetFileSystemEntries(mdir).Length == 0) { Directory.Delete(mdir); } } catch { }
             try { string lnk = Path.Combine(DesktopDir, LnkLeaf); if (File.Exists(lnk)) { File.Delete(lnk); } } catch { }
         }
-        // 目标位置必须是一个还不存在的「CAScreenGuard-当天日期」文件夹，保证每次装的都是干净的唯一位置
-        if (Directory.Exists(dir))
+        try
         {
-            return Str.S("k04") + dir +
-                   Str.S("k05");
+            File.WriteAllBytes(Path.Combine(dir, ScriptLeaf), Convert.FromBase64String(PAYLOAD_PS1));
+            File.WriteAllBytes(Path.Combine(dir, IconLeaf), Convert.FromBase64String(PAYLOAD_ICO));
+            // 脚本运行时要 Add-Type 加载这两个 C# 源文件，必须和脚本放在一起
+            File.WriteAllBytes(Path.Combine(dir, EarlyLeaf), Convert.FromBase64String(PAYLOAD_EARLY));
+            File.WriteAllBytes(Path.Combine(dir, NativeLeaf), Convert.FromBase64String(PAYLOAD_NATIVE));
         }
-        Directory.CreateDirectory(dir);
-        File.WriteAllBytes(Path.Combine(dir, ScriptLeaf), Convert.FromBase64String(PAYLOAD_PS1));
-        File.WriteAllBytes(Path.Combine(dir, IconLeaf), Convert.FromBase64String(PAYLOAD_ICO));
-        // 脚本运行时要 Add-Type 加载这两个 C# 源文件，必须和脚本放在一起
-        File.WriteAllBytes(Path.Combine(dir, EarlyLeaf), Convert.FromBase64String(PAYLOAD_EARLY));
-        File.WriteAllBytes(Path.Combine(dir, NativeLeaf), Convert.FromBase64String(PAYLOAD_NATIVE));
+        catch
+        {
+            // 落地失败（杀软把脚本拦下来、磁盘满……）：把刚建的这个文件夹清掉再抛。
+            // 留着的话，用户再点安装只会看到「已经有 CAScreenGuard-当天日期 了」，
+            // 而那一次其实什么都没装上。
+            try { Directory.Delete(dir, true); } catch { }
+            throw;
+        }
 
         int iterations = 120000;
         byte[] salt = RandomBytes(16);
@@ -488,14 +596,14 @@ public class CAScreenGuardInstaller
         // 快捷键也写进快捷方式的说明里：鼠标停在桌面图标上就能看到，不用翻设置
         string desc = AppName + Str.S("k06");
         string hkDesc = HotkeyText(hotkeyKey);
-        if (hkDesc.Length > 0) { desc = desc + "（" + hkDesc + "）"; }
+        if (hkDesc.Length > 0) { desc = desc + " (" + hkDesc + ")"; }
         if (createLink)
         {
             CreateShortcut(Path.Combine(DesktopDir, LnkLeaf), Path.Combine(SystemDir, "conhost.exe"),
                 "--headless powershell.exe -NoProfile -NoLogo -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + Path.Combine(dir, ScriptLeaf) + "\"",
                 dir, Path.Combine(dir, IconLeaf), desc, hotkeyKey);
             if (hkDesc.Length > 0) { lnkNote = Str.S("k07") + AppName + Str.S("k08") + hkDesc + Str.S("k09"); }
-            else { lnkNote = Str.S("k10") + AppName + "」。\n\n"; }
+            else { lnkNote = Str.S("k10") + AppName + Str.S("k73"); }
         }
         else
         {
@@ -508,7 +616,7 @@ public class CAScreenGuardInstaller
         using (RegistryKey u = Registry.CurrentUser.CreateSubKey(UninstallKey))
         {
             u.SetValue("DisplayName", AppName);
-            u.SetValue("DisplayVersion", "1.0");
+            u.SetValue("DisplayVersion", AppVersion.TrimStart('V'));
             u.SetValue("Publisher", "Conste11ation117");
             u.SetValue("InstallLocation", dir);
             u.SetValue("DisplayIcon", uninst);
@@ -533,13 +641,25 @@ public class CAScreenGuardInstaller
             }
         }
         string dir = InstalledDir();
+        bool leftovers = false;
         try { Registry.CurrentUser.DeleteSubKeyTree(StoreKey, false); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
-        try { if (File.Exists(MirrorPath)) { File.Delete(MirrorPath); } } catch { }
-        try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { }
+        try { if (File.Exists(MirrorPath)) { File.Delete(MirrorPath); } } catch { leftovers = true; }
+        try { string ban = Path.Combine(MirrorDir, "authban.txt"); if (File.Exists(ban)) { File.Delete(ban); } } catch { leftovers = true; }
         try { string mdir = MirrorDir; if (Directory.Exists(mdir) && Directory.GetFileSystemEntries(mdir).Length == 0) { Directory.Delete(mdir); } } catch { }
-        try { string lnk = Path.Combine(DesktopDir, LnkLeaf); if (File.Exists(lnk)) { File.Delete(lnk); } } catch { }
+        try
+        {
+            string lnk = Path.Combine(DesktopDir, LnkLeaf);
+            if (File.Exists(lnk))
+            {
+                File.Delete(lnk);
+                // 告诉资源管理器"这个快捷方式没了"，否则它注册的全局快捷键会一直残留到注销/重启
+                NotifyShell(lnk);
+            }
+        }
+        catch { leftovers = true; }
         string msg = Str.S("k16");
+        if (leftovers) { msg += Str.S("k74"); }
         if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
         {
             foreach (string f in new string[] { CfgLeaf, ScriptLeaf, IconLeaf, EarlyLeaf, NativeLeaf })
@@ -552,12 +672,12 @@ public class CAScreenGuardInstaller
                 catch { }
             }
             msg += Str.S("k17") + dir;
-            // 程序运行时建的 state 目录（标记文件、崩溃日志）也一起清掉，
-            // 再把"安装时创建、现在空了"的父文件夹删掉 —— 重装前的现场要干净
-            try { if (Directory.Exists(StateDir)) { Directory.Delete(StateDir, true); } } catch { }
+            // 程序运行时留下的现场（running.flag / crash-*.log / tick-errors.log / 屏保原值）也清掉
+            RemoveStateFiles();
+            // 上一层（用户挑的安装位置）空了就删；里面还有别的东西则绝不碰。
+            // 这里曾经按"是不是我们建的"加过一道条件，结果父目录彻底删不掉了 —— 回退成按空判定。
             RemoveIfEmpty(Path.GetDirectoryName(dir.TrimEnd('\\')));
-            RemoveIfEmpty(Path.GetDirectoryName(StateDir));
-            ScheduleFolderDelete(dir);
+            ScheduleFolderDelete(dir, true);
         }
         if (silent)
         {
@@ -572,7 +692,7 @@ public class CAScreenGuardInstaller
     // 卸载程序自己就住在这个文件夹里，没法当场把自己删掉，
     // 所以交给一个脱离了本进程的 cmd：等它两秒，再整棵删掉。
     // 只有确认"要删的就是本程序所在的文件夹"才会动手，避免误伤。
-    static void ScheduleFolderDelete(string dir)
+    static void ScheduleFolderDelete(string dir, bool alsoParent)
     {
         try
         {
@@ -580,9 +700,12 @@ public class CAScreenGuardInstaller
             if (string.IsNullOrEmpty(exeDir) || string.IsNullOrEmpty(dir)) { return; }
             if (!Path.GetFullPath(dir).TrimEnd('\\').Equals(exeDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) { return; }
             string sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            ProcessStartInfo psi = new ProcessStartInfo(
-                Path.Combine(sys, "cmd.exe"),
-                "/c ping -n 3 127.0.0.1 >nul & rd /s /q \"" + Path.GetFullPath(dir).TrimEnd('\\') + "\" & rd /q \"" + Path.GetDirectoryName(Path.GetFullPath(dir).TrimEnd('\\')) + "\"");
+            // 等 2 秒再动手，而且失败要重试：uninstall.exe 自己还占着目录时 rd 会失败，
+            // "失败就算了"的结果就是留下一个空文件夹，用户会以为没卸干净。
+            string cmd = "/c ping -n 3 127.0.0.1 >nul & for /L %i in (1,1,8) do @(rd /s /q \"" + Path.GetFullPath(dir).TrimEnd('\\') + "\"";
+            if (alsoParent) { cmd += " & rd /q \"" + Path.GetDirectoryName(Path.GetFullPath(dir).TrimEnd('\\')) + "\""; }
+            cmd += " & ping -n 2 127.0.0.1 >nul)";
+            ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(sys, "cmd.exe"), cmd);
             psi.CreateNoWindow = true;
             psi.UseShellExecute = false;
             psi.WorkingDirectory = sys;
@@ -734,7 +857,9 @@ public class SetupForm : Form
         using (Graphics g = CreateGraphics()) { s = g.DpiX / 96F; }
         if (s < 1F) { s = 1F; }
 
-        Str.Detect();
+        // 语言初值由 Main 里的 Str.Detect() 定，这里绝不能再 Detect 一次 ——
+        // 「切换语言 → 重开向导」会走这个构造函数，再 Detect 就会用系统语言把用户的选择覆盖掉，
+        // 非中文系统上永远切不到中文。
         Text = Str.S("k19") + CAScreenGuardInstaller.AppName + " " + CAScreenGuardInstaller.AppVersion;
         pageWelcome = new Panel(); pageWelcome.Dock = DockStyle.Fill; pageWelcome.BackColor = Color.White; Controls.Add(pageWelcome);
         pageInstall = new Panel(); pageInstall.Dock = DockStyle.Fill; pageInstall.BackColor = Color.White; Controls.Add(pageInstall);
@@ -1149,12 +1274,16 @@ public class SetupForm : Form
 
         string msg;
         Cursor = Cursors.WaitCursor;
+        // Install 在 UI 线程上同步跑 3~10 秒，期间窗口会被系统标记"未响应"，先禁掉免得被反复点
+        btnInstall.Enabled = false;
+        btnInstall.Refresh();
         Status(Str.S("k72"));
         try { msg = CAScreenGuardInstaller.Install(full, pwd, auth, hint, chkLink.Checked, hotkey); }
-        catch (UnauthorizedAccessException) { Cursor = Cursors.Default; Fail(Str.S("k60")); return; }
-        catch (IOException ex) { Cursor = Cursors.Default; Fail(Str.S("k61") + ex.Message); return; }
-        catch (Exception ex) { Cursor = Cursors.Default; Fail(Str.S("k62") + ex.Message); return; }
+        catch (UnauthorizedAccessException) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k60")); return; }
+        catch (IOException ex) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k61") + ex.Message); return; }
+        catch (Exception ex) { Cursor = Cursors.Default; btnInstall.Enabled = true; Fail(Str.S("k62") + ex.Message); return; }
         Cursor = Cursors.Default;
+        btnInstall.Enabled = true;
 
         MessageBox.Show(this, msg, Str.S("k63") + CAScreenGuardInstaller.AppName + " " + CAScreenGuardInstaller.AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Information);
         DialogResult = DialogResult.OK;

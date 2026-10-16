@@ -41,20 +41,6 @@ public static class ScreenLockNative
         }
     }
 
-    // 退出前等一下，避免进程结束时还来不及把屏幕点亮
-    public static void WaitForMonitorWork(int timeoutMs)
-    {
-        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < timeoutMs)
-        {
-            lock (monitorSync)
-            {
-                if (!monitorWorkerRunning && !monitorOffPending && !monitorOnPending) return;
-            }
-            Thread.Sleep(25);
-        }
-    }
-
     private static void EnsureMonitorWorker()
     {
         if (monitorWorkerRunning) return;
@@ -86,7 +72,7 @@ public static class ScreenLockNative
         }
     }
 
-    private static IntPtr monitorTarget = IntPtr.Zero;
+    private static volatile IntPtr monitorTarget = IntPtr.Zero;   // UI 线程写，投递线程读
 
     // 关屏/亮屏消息的投递目标：只发给我们自己的那一个窗口。
     // 不要用 HWND_BROADCAST —— 广播会被每个顶层窗口各处理一份，
@@ -132,18 +118,20 @@ public static class ScreenLockNative
     [DllImport("user32.dll")]
     private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
+    // 失败时返回 uint.MaxValue 而不是 0：0 是合法 tick（刚开机那一瞬），
+    // 而且主脚本里 $script:BlankTick 的初值也是 0，两者撞上会让"用户动没动过"的判断失灵。
     public static uint GetLastInputTick()
     {
         LASTINPUTINFO info = new LASTINPUTINFO();
         info.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
-        if (!GetLastInputInfo(ref info)) return 0;
+        if (!GetLastInputInfo(ref info)) return uint.MaxValue;
         return info.dwTime;
     }
 
     public static uint GetIdleMilliseconds()
     {
         uint last = GetLastInputTick();
-        if (last == 0) return 0;
+        if (last == 0 || last == uint.MaxValue) return 0;
         uint now = unchecked((uint)Environment.TickCount);
         return unchecked(now - last);
     }
@@ -188,8 +176,15 @@ public static class ScreenLockNative
         {
             attached = AttachThreadInput(fgThread, current, true);
         }
-        SetForegroundWindow(hWnd);
-        if (attached) AttachThreadInput(fgThread, current, false);
+        try
+        {
+            SetForegroundWindow(hWnd);
+        }
+        finally
+        {
+            // 一定要摘掉：SetForegroundWindow 万一抛异常，本线程会和前台的输入队列一直挂着
+            if (attached) AttachThreadInput(fgThread, current, false);
+        }
     }
 
     // ---------------- screen saver ----------------
@@ -213,18 +208,6 @@ public static class ScreenLockNative
         SystemParametersInfoSet(SPI_SETSCREENSAVEACTIVE, active ? 1u : 0u, IntPtr.Zero, 0);
     }
 
-    // ---------------- console window ----------------
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    public static void HideConsole()
-    {
-        IntPtr h = GetConsoleWindow();
-        if (h != IntPtr.Zero) ShowWindow(h, 0);
-    }
-
     // ---------------- IME ----------------
     [DllImport("imm32.dll")]
     private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);
@@ -238,7 +221,7 @@ public static class ScreenLockNative
     // 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc：堵住开始菜单、窗口缩略图、
     // Win+G 这类真实的视觉泄露路径。只挡这几个组合，其余按键一律放行。
     // 注意：只拦下面这几组组合键，其余按键一律放行。
-    public static bool BlockSystemKeys = false;
+    public static volatile bool BlockSystemKeys = false;   // UI 线程写，钩子回调线程读
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 

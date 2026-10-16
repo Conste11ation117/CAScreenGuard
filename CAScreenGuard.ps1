@@ -1,13 +1,24 @@
 ﻿#Requires -Version 5.1
+
+
 [CmdletBinding()]
 param(
+    
     [switch]$ResetPassword,
+    
     [ValidateRange(5, 600)][int]$IdleBlankSeconds = 25,
+    
     [switch]$SelfTest,
+    
     [switch]$Ver,
+    
     [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto'
 )
+
 $ErrorActionPreference = 'Stop'
+
+
+
 $script:AppVersion = 'V1.0.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
@@ -15,6 +26,10 @@ if ($Ver) {
     Write-Host '许可 / License: MIT'
     exit 0
 }
+
+
+
+
 $script:LangArg = [string]$Lang
 $script:Lang = 'zh'
 try {
@@ -25,8 +40,8 @@ $script:T = @{
     zh = @{
         k01 = "CAScreenGuard 缺少必需的文件：`n`n"
         k02 = "`n`n脚本、两个 .cs 和图标必须放在同一个目录里。请重新运行安装程序。"
-        k03 = 'CAScreenGuard V1.0.0 · 文件不完整'
-        k04 = 'CAScreenGuard V1.0.0 · 发生错误'
+        k03 = 'CAScreenGuard ' + $script:AppVersion + ' · 文件不完整'
+        k04 = 'CAScreenGuard ' + $script:AppVersion + ' · 发生错误'
         k05 = '无法保存密码配置。'
         k06 = "密码错误次数较多，请等待 {0} 秒后再试"
         k07 = "密码错误次数较多，请等待 {0} 秒后再试"
@@ -34,7 +49,7 @@ $script:T = @{
         k09 = '密码不正确，请重新输入'
         k10 = '本机没有可用的授权码，无法修改解锁密码。请重新运行安装程序。'
         k11 = '（未设置提示）'
-        k12 = 'CAScreenGuard V1.0.0 · 修改解锁密码'
+        k12 = 'CAScreenGuard ' + $script:AppVersion + ' · 修改解锁密码'
         k13 = '修改解锁密码'
         k14 = "为确认是你本人，需要先输入授权码。（区分大小写）`n授权码提示：{0}"
         k15 = '授权码'
@@ -51,7 +66,7 @@ $script:T = @{
         k26 = '授权码连续错误 3 次，已取消修改'
         k27 = '本机没有可用的授权码，无法修改解锁密码'
         k28 = '（没有留下提示）'
-        k29 = 'CAScreenGuard V1.0.0 · 配置需要重建'
+        k29 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置需要重建'
         k30 = '保存解锁密码的文件不见了，或者被动过'
         k31 = "这多半不是意外：文件要么被删除、要么被改写，原来的解锁密码已经作废。`n"
         k32 = "在确认是你本人之前，CAScreenGuard 不会重新开始 —— 免得有人趁这个机会换掉解锁密码。`n"
@@ -71,31 +86,32 @@ $script:T = @{
         k46 = 'CAScreenGuard 已经在运行中，无需重复启动。'
         k47 = "本机还没有装过 CAScreenGuard。`n`n请先运行安装程序（CAScreenGuard-Setup.exe）：解锁密码和授权码都在安装向导里设置，装好后用桌面上的快捷方式启动。"
         k48 = "本机缺少 CAScreenGuard 的凭证，没法核实这份配置是谁写的。`n`n为了不让人趁这个机会换掉解锁密码，这次不会启动屏锁。`n请重新运行安装程序（先卸载，再安装）。"
-        k49 = 'CAScreenGuard V1.0.0 · 配置无法核实'
+        k49 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置无法核实'
         k50 = '你取消了重建，所以这次不会启动屏锁。'
         k51 = '授权码连续输错 3 次，所以这次不会启动屏锁。'
         k52 = "解锁密码没有重建成功。`n`n"
-        k53 = 'CAScreenGuard V1.0.0 · 配置需要重建'
+        k53 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置需要重建'
         k54 = '息屏保护中'
         k55 = '输入解锁密码，按 Enter 恢复屏幕'
         k56 = 'Enter 解锁　·　Ctrl+Backspace 清空　·　Esc 立即息屏　·　Ctrl+Shift+Alt+E 修改密码'
         k57 = '屏幕熄灭时，系统与后台任务仍在运行，请注意电量管理。'
-        k58 = 'CAScreenGuard V1.0.0 · 发生错误'
-        k59 = "如果您确信你没有记错认证码，则您应该考虑您是否遭受了有预谋的攻击。若您先前已经收到配置文件遭到篡改的通知，你应该立刻修改电脑密码，运行最新的杀毒软件并检查你物理工作环境的安全性，稍后重新安装此软件可以解决此问题。"
-        k60 = "CAScreenGuard V1.0.0 · 上次没有正常结束"
+        k58 = 'CAScreenGuard ' + $script:AppVersion + ' · 发生错误'
+        k59 = "如果您确信没有记错授权码，则应该考虑这是否是一次有预谋的攻击。"
+        k75 = "您先前收到过配置被动过的通知，且授权码连续输错：请立刻修改电脑密码、运行最新的杀毒软件，并检查您物理工作环境的安全性。重新安装本软件可以解决当前状态。"
+        k60 = "CAScreenGuard " + $script:AppVersion + " · 上次没有正常结束"
         k61 = "上次息屏锁没有正常退出，但留下了崩溃日志：`n{0}`n`n这是软件自己出错退出的，不是被人关机。请把这份日志和复现步骤一起反馈。`n`n顺便检查一下电源设置：睡眠 / 休眠 / 合盖 如果设得太激进，也会在锁屏期间把它打断。"
         k62 = "上次息屏锁没有正常退出，也没有留下崩溃日志。`n`n也就是说它不是自己崩的：可能是有人按了电源键、用 Ctrl+Alt+Del 注销或关机，或者直接结束了进程。`n`n如果你刚刚回到工位、并没有重启电脑就看到这条消息，请立刻修改电脑密码、运行最新的杀毒软件、检查你物理工作环境的安全性，然后重新安装本软件。`n`n也请顺便检查电源设置：睡眠 / 休眠 / 合盖 如果设得太激进，也会在锁屏期间把它打断。"
         k63 = "已禁止输入密码"
         k64 = "请使用物理按键关机，或使用 Ctrl+Alt+Del 呼出安全界面关机"
-        k65 = "已禁止输入认证码"
-        k66 = "CAScreenGuard V1.0.0"
+        k65 = "已禁止输入授权码"
+        k66 = "CAScreenGuard " + $script:AppVersion
         k67 = "这条封禁已经写进本机记录：关闭或重新打开本程序都不会解除，只有重新安装才能恢复。"
     }
     en = @{
         k01 = "CAScreenGuard is missing required files:`n`n"
         k02 = "`n`nThe script, both .cs files and the icon must live in the same folder. Please run the installer again."
-        k03 = "CAScreenGuard V1.0.0 · Incomplete files"
-        k04 = "CAScreenGuard V1.0.0 · Error"
+        k03 = "CAScreenGuard " + $script:AppVersion + " · Incomplete files"
+        k04 = "CAScreenGuard " + $script:AppVersion + " · Error"
         k05 = "Could not save the password configuration."
         k06 = "Too many wrong passwords. Please wait {0} seconds and try again."
         k07 = "Too many wrong passwords. Please wait {0} seconds and try again."
@@ -103,7 +119,7 @@ $script:T = @{
         k09 = "Wrong password, please try again"
         k10 = "No usable authorization code on this machine, so the unlock password cannot be changed. Please run the installer again."
         k11 = "(no hint set)"
-        k12 = "CAScreenGuard V1.0.0 · Change unlock password"
+        k12 = "CAScreenGuard " + $script:AppVersion + " · Change unlock password"
         k13 = "Change unlock password"
         k14 = "To confirm it is really you, enter the authorization code first. (case-sensitive)`nAuthorization hint: {0}"
         k15 = "Authorization code"
@@ -120,7 +136,7 @@ $script:T = @{
         k26 = "Wrong authorization code 3 times, change cancelled"
         k27 = "No usable authorization code, the unlock password cannot be changed"
         k28 = "(no hint was saved)"
-        k29 = "CAScreenGuard V1.0.0 · Configuration needs to be rebuilt"
+        k29 = "CAScreenGuard " + $script:AppVersion + " · Configuration needs to be rebuilt"
         k30 = "Unlock password file is gone or modified"
         k31 = "This is most likely not an accident: the file was either deleted or rewritten, so the old unlock password no longer counts.`n"
         k32 = "CAScreenGuard will not start over until it knows it is you — otherwise someone could swap the unlock password right here.`n"
@@ -140,24 +156,25 @@ $script:T = @{
         k46 = "CAScreenGuard is already running, no need to start it twice."
         k47 = "CAScreenGuard has not been installed on this machine yet.`n`nPlease run the installer first (CAScreenGuard-Setup.exe): the unlock password and the authorization code are set in the setup wizard, then start it from the desktop shortcut."
         k48 = "This machine is missing CAScreenGuard credentials, so this configuration cannot be trusted.`n`nTo keep someone from swapping the unlock password right now, the screen lock will not start.`nPlease run the installer again (uninstall first, then install)."
-        k49 = "CAScreenGuard V1.0.0 · Configuration cannot be verified"
+        k49 = "CAScreenGuard " + $script:AppVersion + " · Configuration cannot be verified"
         k50 = "You cancelled the rebuild, so the screen lock will not start."
         k51 = "3 wrong authorization codes, so the screen lock will not start."
         k52 = "The unlock password was not rebuilt.`n`n"
-        k53 = "CAScreenGuard V1.0.0 · Configuration needs to be rebuilt"
+        k53 = "CAScreenGuard " + $script:AppVersion + " · Configuration needs to be rebuilt"
         k54 = "Screen protected"
         k55 = "Type your unlock password and press Enter to restore the screen"
         k56 = "Enter unlock · Ctrl+Backspace clear · Esc blank now · Ctrl+Shift+Alt+E change password"
         k57 = "The screen is off, but the system and background tasks keep running — mind your battery."
-        k58 = "CAScreenGuard V1.0.0 · Error"
-        k59 = "If you are sure you did not mistype the authorization code, then you should consider whether you are under a deliberate attack. If you have already been told that the configuration file was tampered with, change your Windows password now, run a fully updated antivirus scan and check the physical safety of your workspace. Reinstalling this software afterwards will resolve the current state."
-        k60 = "CAScreenGuard V1.0.0 · The last session did not end cleanly"
+        k58 = "CAScreenGuard " + $script:AppVersion + " · Error"
+        k59 = "If you are sure you did not mistype the authorization code, consider whether this is a deliberate attack."
+        k75 = "You were already told that the configuration file had been tampered with, and the authorization code was then mistyped three times: change your Windows password now, run a fully updated antivirus scan and check the physical safety of your workspace. Reinstalling this software will resolve the current state."
+        k60 = "CAScreenGuard " + $script:AppVersion + " · The last session did not end cleanly"
         k61 = "The last lock session did not exit cleanly, but it left a crash log:`n{0}`n`nSo the software itself failed — this was not someone shutting the machine down. Please report that log together with the steps that led to it.`n`nWhile you are here, check your power settings: aggressive sleep / hibernate / lid-close actions can also interrupt the lock."
         k62 = "The last lock session did not exit cleanly, and it left no crash log.`n`nSo it did not crash by itself: someone may have pressed the power button, signed out or shut down via Ctrl+Alt+Del, or simply killed the process.`n`nIf you have just come back to your desk and did NOT restart the computer before seeing this, change your Windows password now, run a fully updated antivirus scan, check the physical safety of your workspace, and then reinstall this software.`n`nAlso check your power settings: aggressive sleep / hibernate / lid-close actions can interrupt the lock too."
         k63 = "Password entry is disabled"
         k64 = "Power off using the physical power button, or press Ctrl+Alt+Del and shut down from the security screen"
         k65 = "Authorization code entry is disabled"
-        k66 = "CAScreenGuard V1.0.0"
+        k66 = "CAScreenGuard " + $script:AppVersion
         k67 = "This block has been recorded on this machine: closing or reopening the program will not lift it — only reinstalling can."
     }
 }
@@ -167,6 +184,9 @@ function T {
     if ($t -and $t.ContainsKey($Key)) { return $t[$Key] }
     return $script:T['zh'][$Key]
 }
+
+
+
 $script:ScriptDir = $PSScriptRoot
 if (-not $script:ScriptDir) {
     try { $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path } catch { }
@@ -188,6 +208,12 @@ if ($missingFiles.Count -gt 0) {
     Write-Host $missMsg
     exit 1
 }
+
+
+
+
+
+
 if (-not ('ScreenLockEarly' -as [type])) {
     Add-Type -Path $csEarly
 }
@@ -203,14 +229,29 @@ try {
     }
 }
 catch { }
+
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 try { [System.Windows.Forms.Application]::EnableVisualStyles() } catch { }
+
+
 if (-not ('ScreenLockNative' -as [type])) {
     Add-Type -Path $csNative
 }
+
+
+
+
+
+
+
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'CAScreenGuard'
 $script:FlagPath = Join-Path $script:StateDir 'running.flag'
+
+
+$script:PresavePath = Join-Path $script:StateDir 'screen-saver-original.json'
+
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
     try {
@@ -224,9 +265,12 @@ function Get-LastCrashLog {
     } catch { }
     return $null
 }
+
 function New-RunningFlag {
     try {
         if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        
+        
         $info = 'started=' + (Get-Date).ToString('s') + "`r`n" +
                 'user=' + $env:USERNAME + "`r`n" +
                 'computer=' + $env:COMPUTERNAME + "`r`n" +
@@ -234,9 +278,11 @@ function New-RunningFlag {
         [System.IO.File]::WriteAllText($script:FlagPath, $info, (New-Object System.Text.UTF8Encoding($false)))
     } catch { }
 }
+
 function Remove-RunningFlag {
     try { if (Test-Path -LiteralPath $script:FlagPath) { Remove-Item -LiteralPath $script:FlagPath -Force } } catch { }
 }
+
 function Write-CrashLog {
     param($ErrorRecord, [string]$Where)
     try {
@@ -263,12 +309,35 @@ function Write-CrashLog {
             [void]$sb.AppendLine(($ErrorRecord | Out-String))
         }
         [System.IO.File]::WriteAllText($path, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+        
         Get-ChildItem -LiteralPath $script:StateDir -Filter 'crash-*.log' -File -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -Skip 10 | Remove-Item -Force -ErrorAction SilentlyContinue
         return $path
     } catch { return $null }
 }
+
+function Write-TickError {
+    
+    
+    
+    param([string]$Message)
+    try {
+        if ([string]::IsNullOrEmpty($Message)) { return }
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        $path = Join-Path $script:StateDir 'tick-errors.log'
+        if (Test-Path -LiteralPath $path) {
+            if ((Get-Item -LiteralPath $path -Force).Length -gt 65536) {
+                [System.IO.File]::WriteAllText($path, '', (New-Object System.Text.UTF8Encoding($false)))
+            }
+        }
+        [System.IO.File]::AppendAllText($path,
+            ((Get-Date).ToString('s') + '  ' + $Message + "`r`n"),
+            (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Test-PreviousSession {
+    
     if (-not (Test-Path -LiteralPath $script:FlagPath)) { return $null }
     $res = [pscustomobject]@{ started = ''; crashLog = $null; flagTime = [datetime]::MinValue }
     try {
@@ -279,6 +348,10 @@ function Test-PreviousSession {
     $res.crashLog = Get-LastCrashLog -NotBefore $res.flagTime
     return $res
 }
+
+
+
+
 trap {
     try { $null = Write-CrashLog -ErrorRecord $_ -Where 'trap' } catch { }
     try {
@@ -288,22 +361,26 @@ trap {
     catch { }
     exit 1
 }
+
+
 $script:LastTickError = ''
-$script:Scale = 1.0
+$script:Scale = 1.0             
 try { $dpiNow = [ScreenLockEarly]::GetDpiForSystem(); if ($dpiNow -gt 0) { $script:Scale = $dpiNow / 96.0 } } catch { }
-$script:DlgOpen = $false
+$script:DlgOpen = $false          
+
+
 $script:ConfigFileName = '.cascreenguard.config.json'
-$script:ConfigPath = $null
-$script:ConfigRaw = $null
+$script:ConfigPath = $null           
+$script:ConfigRaw = $null           
 $script:IdleBlankMs = [int]$IdleBlankSeconds * 1000
-$script:AllowClose = $false
+$script:AllowClose = $false          
 $script:ExitReason = ''
-$script:State = 'Away'
-$script:BlankTick = [uint32]0
+$script:State = 'Away'          
+$script:BlankTick = [uint32]0       
 $script:LastBlankSent = [datetime]::MinValue
 $script:FailCount = 0
-$script:TxtLockedOut     = $false
-$script:AuthLockedOut   = $false
+$script:TxtLockedOut     = $false          
+$script:AuthLockedOut   = $false          
 $script:CooldownActive = $false
 $script:CooldownUntil = [datetime]::MinValue
 $script:OrigScreenSaver = $null
@@ -312,6 +389,10 @@ $script:Restored = $false
 $script:SelfTestLog = New-Object System.Collections.Generic.List[string]
 $script:SelfTestFailed = $false
 $script:SelfTestStep = 0
+
+
+
+
 $script:ConfigCandidates = New-Object System.Collections.Generic.List[string]
 $script:StoreRegPath = 'HKCU:\Software\CAScreenGuard'
 try {
@@ -322,6 +403,8 @@ catch { }
 if ($script:ScriptDir) {
     [void]$script:ConfigCandidates.Add((Join-Path $script:ScriptDir $script:ConfigFileName))
 }
+
+
 if ($script:LangArg -eq 'zh' -or $script:LangArg -eq 'en') {
     $script:Lang = $script:LangArg
 } else {
@@ -330,6 +413,8 @@ if ($script:LangArg -eq 'zh' -or $script:LangArg -eq 'en') {
         if ($langSaved -eq 'zh' -or $langSaved -eq 'en') { $script:Lang = $langSaved }
     } catch { }
 }
+
+
 function Invoke-Sound {
     param([string]$Kind)
     try {
@@ -341,32 +426,44 @@ function Invoke-Sound {
     }
     catch { }
 }
+
 function Show-ErrorMsg {
     param([string]$Text)
     $script:TxtError.Text = $Text
     if (-not $script:TxtError.Visible) { $script:TxtError.Visible = $true }
 }
+
 function Hide-ErrorMsg {
     if ($script:TxtError -and $script:TxtError.Visible) { $script:TxtError.Visible = $false }
 }
+
 function Set-AuthLockedUI {
+    
+    
     param($Dlg, $Tip, [switch]$Permanent)
     try {
-        $body = (T 'k59') + "`r`n`r`n" + (T 'k65')
+        $body = (T 'k59')
+        
+        
+        if ($Permanent) { $body += "`r`n" + (T 'k75') }
+        $body += "`r`n`r`n" + (T 'k65')
         if ($Permanent) { $body += "`r`n" + (T 'k67') }
         $Tip.Text = $body + "`r`n" + (T 'k64')
         $Tip.ForeColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
         $k = $script:Scale
         if ($k -lt 1) { $k = 1 }
+        
         $need = [System.Windows.Forms.TextRenderer]::MeasureText(
             $Tip.Text, $Tip.Font,
             (New-Object System.Drawing.Size([Math]::Max(60, $Tip.Width - [int](8 * $k)), 4000)),
             [System.Windows.Forms.TextFormatFlags]::WordBreak).Height + [int](12 * $k)
         $Tip.SetBounds($Tip.Left, $Tip.Top, $Tip.Width, $need)
+        
         $wantH = $Tip.Top + $need + [int](18 * $k)
         if ($Dlg.ClientSize.Height -lt $wantH) {
             $Dlg.ClientSize = New-Object System.Drawing.Size($Dlg.ClientSize.Width, $wantH)
         }
+        
         $script:TxtLockedOut = $true
         try { $script:Txt.Enabled = $false } catch { }
         try { $script:LockNotice.Visible = $true } catch { }
@@ -380,7 +477,10 @@ function Set-AuthLockedUI {
         }
     } catch { }
 }
+
 function Test-AuthCode {
+    
+    
     param([string]$Code, $Source)
     try {
         if ($null -eq $Source) { $Source = $script:Config }
@@ -400,7 +500,10 @@ function Test-AuthCode {
     }
     catch { return $false }
 }
+
 function Test-PlainAscii {
+    
+    
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $false }
     foreach ($ch in $Text.ToCharArray()) {
@@ -409,7 +512,11 @@ function Test-PlainAscii {
     }
     return $true
 }
+
+
 function Read-PasswordConfig {
+    
+    
     $script:ConfigPath = $null
     $script:ConfigRaw = $null
     foreach ($path in $script:ConfigCandidates) {
@@ -428,7 +535,11 @@ function Read-PasswordConfig {
     }
     return $null
 }
+
 function Save-PasswordConfig {
+    
+    
+    
     param($Record, $Store)
     $empty = '"marker":""'
     $body = [pscustomobject]@{
@@ -456,6 +567,8 @@ function Save-PasswordConfig {
             if ($dir -and -not (Test-Path -LiteralPath $dir)) {
                 New-Item -ItemType Directory -Path $dir -Force | Out-Null
             }
+            
+            
             if (Test-Path -LiteralPath $path) {
                 try { (Get-Item -LiteralPath $path -Force).Attributes = [System.IO.FileAttributes]::Normal } catch { }
             }
@@ -469,7 +582,9 @@ function Save-PasswordConfig {
     }
     throw (T 'k05')
 }
+
 function New-PasswordRecord {
+    
     param([string]$Password, $Auth)
     if ($null -eq $Auth) { $Auth = Read-IntegrityStore }
     if ($null -eq $Auth) { $Auth = $script:Config }
@@ -479,6 +594,7 @@ function New-PasswordRecord {
     $iterations = 120000
     $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, $iterations)
     $hash = $derive.GetBytes(32)
+
     $authSaltB64 = ''
     $authHashB64 = ''
     $authIterations = 120000
@@ -489,6 +605,7 @@ function New-PasswordRecord {
         if ($Auth.authIterations) { $authIterations = [int]$Auth.authIterations }
         if ($Auth.authHint) { $authHintText = [string]$Auth.authHint }
     }
+
     return [pscustomobject]@{
         version        = 2
         algorithm      = 'PBKDF2-SHA1'
@@ -503,6 +620,7 @@ function New-PasswordRecord {
         marker         = ''
     }
 }
+
 function Test-PasswordRecord {
     param([string]$Password, $Record)
     try {
@@ -517,12 +635,24 @@ function Test-PasswordRecord {
     }
     catch { return $false }
 }
+
+
+
+
+
+
+
+
+
 $script:StoreRegPath = 'HKCU:\Software\CAScreenGuard'
 $script:StoreMirrorPath = Join-Path (Join-Path $env:APPDATA 'CAScreenGuard') 'store.json'
+
 function Get-ConfigCanonical {
+    
     param([string]$Text)
     return [regex]::Replace($Text, '"marker":"[^"]*"', '"marker":""')
 }
+
 function Get-ConfigMarker {
     param([string]$Text, [string]$KeyB64)
     $key = [Convert]::FromBase64String($KeyB64)
@@ -530,7 +660,9 @@ function Get-ConfigMarker {
     $data = [System.Text.Encoding]::UTF8.GetBytes($Text)
     return [Convert]::ToBase64String($hmac.ComputeHash($data))
 }
+
 function Read-IntegrityStore {
+    
     try {
         if (Test-Path -LiteralPath $script:StoreRegPath) {
             $v = Get-ItemProperty -LiteralPath $script:StoreRegPath -ErrorAction Stop
@@ -557,8 +689,14 @@ function Read-IntegrityStore {
     catch { }
     return $null
 }
+
+
+
+
+
 $script:AuthBanRegName = 'AuthBan'
 $script:AuthBanMirrorPath = Join-Path (Join-Path $env:APPDATA 'CAScreenGuard') 'authban.txt'
+
 function Test-AuthBanned {
     try {
         $v = Get-ItemProperty -LiteralPath $script:StoreRegPath -ErrorAction Stop
@@ -568,6 +706,7 @@ function Test-AuthBanned {
     try { if (Test-Path -LiteralPath $script:AuthBanMirrorPath) { return $true } } catch { }
     return $false
 }
+
 function Set-AuthBanned {
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     try {
@@ -582,8 +721,12 @@ function Set-AuthBanned {
     }
     catch { }
 }
+
+
+
 $script:AuthBanned = Test-AuthBanned
 if ($script:AuthBanned) { $script:AuthLockedOut = $true }
+
 function Write-IntegrityStore {
     param($Store)
     $json = $Store | ConvertTo-Json -Compress -Depth 4
@@ -609,6 +752,7 @@ function Write-IntegrityStore {
     catch { }
     return $ok
 }
+
 function New-IntegrityStore {
     $raw = New-Object byte[] 32
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($raw)
@@ -622,7 +766,10 @@ function New-IntegrityStore {
         provisioned    = (Get-Date).ToString('s')
     }
 }
+
 function Test-ConfigIntegrity {
+    
+    
     param($ConfigRecord, [string]$RawText)
     $store = Read-IntegrityStore
     if ($null -eq $store) {
@@ -633,15 +780,20 @@ function Test-ConfigIntegrity {
     if (-not $ConfigRecord.marker) { return 'modified' }
     if ([string]::IsNullOrEmpty($RawText)) { return 'modified' }
     $canonical = Get-ConfigCanonical -Text $RawText
-    if ((Get-ConfigMarker -Text $canonical -KeyB64 $store.markerKey) -ne $ConfigRecord.marker) { return 'modified' }
+    
+    if ((Get-ConfigMarker -Text $canonical -KeyB64 $store.markerKey) -cne $ConfigRecord.marker) { return 'modified' }
     return 'ok'
 }
+
+
 function Invoke-GoDark {
+    
     $script:State = 'Away'
     $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
     $script:LastBlankSent = Get-Date
     [ScreenLockNative]::MonitorOff()
 }
+
 function Update-CooldownMessage {
     if (-not $script:CooldownActive) { return }
     $now = Get-Date
@@ -655,9 +807,11 @@ function Update-CooldownMessage {
         Hide-ErrorMsg
     }
 }
+
 function Invoke-SubmitAttempt {
     if ($script:AllowClose) { return }
-    if ($script:TxtLockedOut) { return }
+    if ($script:TxtLockedOut) { return }        
+
     $now = Get-Date
     if ($script:CooldownActive -and $now -lt $script:CooldownUntil) {
         $left = [Math]::Max(1, [int][Math]::Ceiling(($script:CooldownUntil - $now).TotalSeconds))
@@ -665,8 +819,10 @@ function Invoke-SubmitAttempt {
         Invoke-Sound 'warn'
         return
     }
+
     $typed = $script:Txt.Text
-    if ([string]::IsNullOrEmpty($typed)) { return }
+    if ([string]::IsNullOrEmpty($typed)) { return }   
+
     if (Test-PasswordRecord -Password $typed -Record $script:Config) {
         $script:FailCount = 0
         $script:AllowClose = $true
@@ -676,7 +832,10 @@ function Invoke-SubmitAttempt {
         $script:Form.Close()
         return
     }
+
+    
     $script:FailCount++
+    
     if ($script:FailCount -ge 8) {
         $script:TxtLockedOut = $true
         $script:CooldownActive = $false
@@ -701,17 +860,21 @@ function Invoke-SubmitAttempt {
         Show-ErrorMsg (T 'k09')
     }
 }
+
 function Invoke-GuardTick {
     try {
         if ($script:AllowClose) { return }
         $now = Get-Date
         $idle = [uint32][ScreenLockNative]::GetIdleMilliseconds()
+
         if ($script:State -eq 'Away') {
             if ([ScreenLockNative]::GetLastInputTick() -ne $script:BlankTick) {
+                
                 $script:State = 'Prompt'
                 $script:LastBlankSent = [datetime]::MinValue
             }
             elseif ((($now - $script:LastBlankSent).TotalSeconds -ge 10) -and ($idle -ge 3000)) {
+                
                 $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
                 $script:LastBlankSent = $now
                 [ScreenLockNative]::MonitorOff()
@@ -720,8 +883,14 @@ function Invoke-GuardTick {
         else {
             if (($idle -ge $script:IdleBlankMs) -and (-not $script:DlgOpen)) { Invoke-GoDark }
         }
+
         Update-CooldownMessage
+
+        
         if (-not $script:DlgOpen) {
+            
+            
+            
             [ScreenLockNative]::ReassertTopMost($script:Form.Handle)
             if (($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
                 [ScreenLockNative]::ForceForeground($script:Form.Handle)
@@ -730,28 +899,68 @@ function Invoke-GuardTick {
         }
     }
     catch {
-        $script:LastTickError = $_.Exception.Message
+        
+        $msg = $_.Exception.Message
+        if ($msg -ne $script:LastTickError) {
+            $script:LastTickError = $msg
+            Write-TickError -Message $msg
+        }
     }
 }
+
+
+function Restore-PendingScreenSaverSave {
+    
+    
+    try {
+        if (-not (Test-Path -LiteralPath $script:PresavePath)) { return }
+        $saved = [System.IO.File]::ReadAllText($script:PresavePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        if ($null -ne $saved.reg) {
+            Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -Value $saved.reg -ErrorAction SilentlyContinue
+        }
+        if ($null -ne $saved.spi) { [ScreenLockNative]::SetScreenSaverActive(([int]$saved.spi) -ne 0) }
+        Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue
+    } catch { }
+}
+
+function Save-ScreenSaverPrerestore {
+    try {
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        $o = [pscustomobject]@{
+            reg     = $script:OrigScreenSaverReg
+            spi     = $script:OrigScreenSaver
+            savedAt = (Get-Date).ToString('s')
+        }
+        [System.IO.File]::WriteAllText($script:PresavePath, ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Initialize-SystemState {
+    Restore-PendingScreenSaverSave          
     try { $script:OrigScreenSaver = [ScreenLockNative]::GetScreenSaverActive() } catch { $script:OrigScreenSaver = $null }
     try {
         $script:OrigScreenSaverReg = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction Stop).ScreenSaveActive
     }
     catch { $script:OrigScreenSaverReg = $null }
+    Save-ScreenSaverPrerestore              
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
     try { [ScreenLockNative]::KeepSystemAwake() } catch { }
+    
     try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
     try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
 }
+
 function Restore-SystemState {
     if ($script:Restored) { return }
     $script:Restored = $true
+    
     try { [ScreenLockNative]::BlockSystemKeys = $false } catch { }
     try { [ScreenLockNative]::RemoveKeyboardHook() } catch { }
+    
     try { [ScreenLockNative]::TargetWindow = [IntPtr]::Zero } catch { }
-    Remove-RunningFlag
+    Remove-RunningFlag                        
     try { [ScreenLockNative]::MonitorOn() } catch { }
+    
     try {
         $deadline = (Get-Date).AddSeconds(1.2)
         while ((Get-Date) -lt $deadline) {
@@ -779,19 +988,28 @@ function Restore-SystemState {
         }
     }
     catch { }
+    try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
     try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
+
+
+
+
 function Show-ChangePasswordDialog {
+    
     $family = 'Microsoft YaHei UI'
     $script:CpwResult = 'cancel'
     $script:CpwAuthFails = 0
     $script:CpwErr = $null
+
+    
     if (-not $script:Config -or -not $script:Config.authHash) {
         [System.Windows.Forms.MessageBox]::Show((T 'k10'), 'CAScreenGuard', 'OK', 'Warning') | Out-Null
         return 'noauth'
     }
     $hintText = (T 'k11')
     if ($script:Config.authHint) { $hintText = $script:Config.authHint }
+
     $script:CpwDlg = New-Object System.Windows.Forms.Form
     $script:CpwDlg.Text = (T 'k12')
     $script:CpwDlg.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -807,6 +1025,7 @@ function Show-ChangePasswordDialog {
         if (Test-Path -LiteralPath $icoFile) { $script:CpwDlg.Icon = New-Object System.Drawing.Icon($icoFile, 32, 32) }
     }
     catch { }
+
     $head = New-Object System.Windows.Forms.Label
     $head.AutoSize = $false
     $head.Text = (T 'k13')
@@ -814,48 +1033,56 @@ function Show-ChangePasswordDialog {
     $head.ForeColor = [System.Drawing.Color]::FromArgb(28, 28, 32)
     $head.SetBounds(24, 18, 472, 34)
     $script:CpwDlg.Controls.Add($head)
+
     $desc = New-Object System.Windows.Forms.Label
     $desc.AutoSize = $false
     $desc.Text = ((T 'k14') -f $hintText)
     $desc.ForeColor = [System.Drawing.Color]::FromArgb(96, 100, 108)
     $desc.SetBounds(24, 52, 472, 42)
     $script:CpwDlg.Controls.Add($desc)
+
     $lb0 = New-Object System.Windows.Forms.Label
     $lb0.AutoSize = $false
     $lb0.Text = (T 'k15')
     $lb0.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lb0.SetBounds(24, 102, 472, 20)
     $script:CpwDlg.Controls.Add($lb0)
+
     $script:CpwAuth = New-Object System.Windows.Forms.TextBox
     $script:CpwAuth.PasswordChar = [char]0x25CF
     $script:CpwAuth.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:CpwAuth.MaxLength = 128
     $script:CpwAuth.SetBounds(24, 124, 472, 26)
     $script:CpwDlg.Controls.Add($script:CpwAuth)
+
     $lb1 = New-Object System.Windows.Forms.Label
     $lb1.AutoSize = $false
     $lb1.Text = (T 'k16')
     $lb1.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lb1.SetBounds(24, 162, 472, 20)
     $script:CpwDlg.Controls.Add($lb1)
+
     $script:CpwPwd1 = New-Object System.Windows.Forms.TextBox
     $script:CpwPwd1.PasswordChar = [char]0x25CF
     $script:CpwPwd1.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:CpwPwd1.MaxLength = 128
     $script:CpwPwd1.SetBounds(24, 184, 472, 26)
     $script:CpwDlg.Controls.Add($script:CpwPwd1)
+
     $lb2 = New-Object System.Windows.Forms.Label
     $lb2.AutoSize = $false
     $lb2.Text = (T 'k17')
     $lb2.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lb2.SetBounds(24, 222, 472, 20)
     $script:CpwDlg.Controls.Add($lb2)
+
     $script:CpwPwd2 = New-Object System.Windows.Forms.TextBox
     $script:CpwPwd2.PasswordChar = [char]0x25CF
     $script:CpwPwd2.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:CpwPwd2.MaxLength = 128
     $script:CpwPwd2.SetBounds(24, 244, 472, 26)
     $script:CpwDlg.Controls.Add($script:CpwPwd2)
+
     $err = New-Object System.Windows.Forms.Label
     $err.AutoSize = $false
     $err.ForeColor = [System.Drawing.Color]::FromArgb(206, 55, 55)
@@ -863,6 +1090,7 @@ function Show-ChangePasswordDialog {
     $err.Visible = $false
     $script:CpwErr = $err
     $script:CpwDlg.Controls.Add($err)
+
     $save = New-Object System.Windows.Forms.Button
     $save.Text = (T 'k18')
     $save.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -872,6 +1100,7 @@ function Show-ChangePasswordDialog {
     $save.Font = New-Object System.Drawing.Font($family, [float]10)
     $save.SetBounds(312, 324, 88, 32)
     $script:CpwDlg.Controls.Add($save)
+
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k19')
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -881,6 +1110,8 @@ function Show-ChangePasswordDialog {
     $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
     $cancel.SetBounds(416, 324, 88, 32)
     $script:CpwDlg.Controls.Add($cancel)
+
+    
     $script:CpwTip = New-Object System.Windows.Forms.Label
     $script:CpwTip.AutoSize = $false
     $script:CpwTip.Text = ''
@@ -888,10 +1119,12 @@ function Show-ChangePasswordDialog {
     $script:CpwTip.Font = New-Object System.Drawing.Font($family, [float]8.5)
     $script:CpwTip.SetBounds(24, 366, 480, 116)
     $script:CpwDlg.Controls.Add($script:CpwTip)
+
     $script:CpwDlg.AcceptButton = $save
     $script:CpwDlg.CancelButton = $cancel
     $script:CpwDlg.Add_Shown({ $null = $script:CpwAuth.Focus() })
     if ($script:AuthLockedOut) { Set-AuthLockedUI -Dlg $script:CpwDlg -Tip $script:CpwTip -Permanent:$script:AuthBanned }
+
     $save.Add_Click({
             if (-not (Test-AuthCode $script:CpwAuth.Text)) {
                 $script:CpwAuthFails++
@@ -901,6 +1134,7 @@ function Show-ChangePasswordDialog {
                     Set-AuthLockedUI -Dlg $script:CpwDlg -Tip $script:CpwTip -Permanent:$script:AuthBanned
                     return
                 }
+                
                 $script:CpwErr.Visible = $false
                 $script:CpwAuth.Clear()
                 $null = $script:CpwAuth.Focus()
@@ -947,6 +1181,9 @@ function Show-ChangePasswordDialog {
     $script:CpwAuth.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
     $script:CpwPwd1.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
     $script:CpwPwd2.Add_TextChanged({ if ($script:CpwErr.Visible) { $script:CpwErr.Visible = $false } })
+
+    
+    
     if ($script:Scale -gt 1.01) {
         $script:CpwDlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
         $script:CpwDlg.Font = New-Object System.Drawing.Font($family, [float]9)
@@ -955,6 +1192,7 @@ function Show-ChangePasswordDialog {
         $save.Font = New-Object System.Drawing.Font($family, [float]10)
         $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
     }
+
     $null = $script:CpwDlg.ShowDialog()
     try { $script:CpwDlg.Dispose() } catch { }
     $script:CpwDlg = $null
@@ -965,6 +1203,7 @@ function Show-ChangePasswordDialog {
     $script:CpwErr = $null
     return $script:CpwResult
 }
+
 function Invoke-ChangePasswordFlow {
     if ($script:DlgOpen) { return }
     $script:DlgOpen = $true
@@ -972,6 +1211,8 @@ function Invoke-ChangePasswordFlow {
     try { $outcome = Show-ChangePasswordDialog } catch { $outcome = 'cancel' }
     $script:DlgOpen = $false
     try { if ($script:Txt.Enabled) { $null = $script:Txt.Focus() } } catch { }
+    
+    
     if ($outcome -eq 'ok') {
         try { $script:Txt.Clear() } catch { }
         Show-ErrorMsg (T 'k25')
@@ -983,14 +1224,24 @@ function Invoke-ChangePasswordFlow {
         Show-ErrorMsg (T 'k27')
     }
 }
+
+
+
+
+
 function Show-RebuildDialog {
+    
+    
+    
     $family = 'Microsoft YaHei UI'
     $script:DlgErr = $null
     $script:DlgFails = 0
     $script:DlgResult = 'cancel'
+    
     $script:DlgStore = Read-IntegrityStore
     $hintText = (T 'k28')
     if ($script:DlgStore -and $script:DlgStore.authHint) { $hintText = $script:DlgStore.authHint }
+
     $script:Dlg = New-Object System.Windows.Forms.Form
     $script:Dlg.Text = (T 'k29')
     $script:Dlg.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -1006,15 +1257,18 @@ function Show-RebuildDialog {
         if (Test-Path -LiteralPath $icoFile) { $script:Dlg.Icon = New-Object System.Drawing.Icon($icoFile, 32, 32) }
     }
     catch { }
+
     $head = New-Object System.Windows.Forms.Label
     $head.AutoSize = $false
     $head.Text = (T 'k30')
+    
     $headPt = 15
     if ($script:Lang -eq 'en') { $headPt = 13 }
     $head.Font = New-Object System.Drawing.Font($family, [float]$headPt, [System.Drawing.FontStyle]::Bold)
     $head.ForeColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
     $head.SetBounds(24, 16, 436, 34)
     $script:Dlg.Controls.Add($head)
+
     $desc = New-Object System.Windows.Forms.Label
     $desc.AutoSize = $false
     $desc.Text = ((T 'k31') +
@@ -1024,42 +1278,49 @@ function Show-RebuildDialog {
     $desc.ForeColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
     $desc.SetBounds(24, 52, 436, 92)
     $script:Dlg.Controls.Add($desc)
+
     $lbCur = New-Object System.Windows.Forms.Label
     $lbCur.AutoSize = $false
     $lbCur.Text = (T 'k35')
     $lbCur.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lbCur.SetBounds(24, 152, 436, 20)
     $script:Dlg.Controls.Add($lbCur)
+
     $script:DlgCurAuth = New-Object System.Windows.Forms.TextBox
     $script:DlgCurAuth.PasswordChar = [char]0x25CF
     $script:DlgCurAuth.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:DlgCurAuth.MaxLength = 128
     $script:DlgCurAuth.SetBounds(24, 174, 436, 26)
     $script:Dlg.Controls.Add($script:DlgCurAuth)
+
     $lb1 = New-Object System.Windows.Forms.Label
     $lb1.AutoSize = $false
     $lb1.Text = (T 'k36')
     $lb1.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lb1.SetBounds(24, 210, 436, 20)
     $script:Dlg.Controls.Add($lb1)
+
     $script:DlgPwd1 = New-Object System.Windows.Forms.TextBox
     $script:DlgPwd1.PasswordChar = [char]0x25CF
     $script:DlgPwd1.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:DlgPwd1.MaxLength = 128
     $script:DlgPwd1.SetBounds(24, 232, 436, 26)
     $script:Dlg.Controls.Add($script:DlgPwd1)
+
     $lb2 = New-Object System.Windows.Forms.Label
     $lb2.AutoSize = $false
     $lb2.Text = (T 'k37')
     $lb2.ForeColor = [System.Drawing.Color]::FromArgb(70, 74, 80)
     $lb2.SetBounds(24, 268, 436, 20)
     $script:Dlg.Controls.Add($lb2)
+
     $script:DlgPwd2 = New-Object System.Windows.Forms.TextBox
     $script:DlgPwd2.PasswordChar = [char]0x25CF
     $script:DlgPwd2.ImeMode = [System.Windows.Forms.ImeMode]::Disable
     $script:DlgPwd2.MaxLength = 128
     $script:DlgPwd2.SetBounds(24, 290, 436, 26)
     $script:Dlg.Controls.Add($script:DlgPwd2)
+
     $err = New-Object System.Windows.Forms.Label
     $err.AutoSize = $false
     $err.ForeColor = [System.Drawing.Color]::FromArgb(206, 55, 55)
@@ -1067,6 +1328,7 @@ function Show-RebuildDialog {
     $err.Visible = $false
     $script:DlgErr = $err
     $script:Dlg.Controls.Add($err)
+
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = (T 'k38')
     $ok.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1076,6 +1338,7 @@ function Show-RebuildDialog {
     $ok.Font = New-Object System.Drawing.Font($family, [float]10)
     $ok.SetBounds(240, 352, 136, 32)
     $script:Dlg.Controls.Add($ok)
+
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k39')
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1085,6 +1348,7 @@ function Show-RebuildDialog {
     $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
     $cancel.SetBounds(384, 352, 96, 32)
     $script:Dlg.Controls.Add($cancel)
+
     $tip = New-Object System.Windows.Forms.Label
     $tip.AutoSize = $false
     $tip.Text = ''
@@ -1092,14 +1356,18 @@ function Show-RebuildDialog {
     $tip.Font = New-Object System.Drawing.Font($family, [float]8.5)
     $tip.SetBounds(24, 398, 436, 36)
     $script:Dlg.Controls.Add($tip)
+
     $script:Dlg.AcceptButton = $ok
     $script:Dlg.CancelButton = $cancel
     $script:Dlg.Add_Shown({ $null = $script:DlgCurAuth.Focus() })
     if ($script:AuthLockedOut) { Set-AuthLockedUI -Dlg $script:Dlg -Tip $tip -Permanent:$script:AuthBanned }
+
     $ok.Add_Click({
             if (-not (Test-AuthCode -Code $script:DlgCurAuth.Text -Source $script:DlgStore)) {
                 $script:DlgFails++
                 if ($script:DlgFails -ge 3) {
+                    
+                    
                     $script:DlgFails = 0
                     $script:AuthLockedOut = $true
                     Set-AuthBanned
@@ -1107,6 +1375,7 @@ function Show-RebuildDialog {
                     Set-AuthLockedUI -Dlg $script:Dlg -Tip $tip -Permanent
                     return
                 }
+                
                 $script:DlgErr.Visible = $false
                 $script:DlgCurAuth.Clear()
                 $null = $script:DlgCurAuth.Focus()
@@ -1150,9 +1419,12 @@ function Show-RebuildDialog {
             $script:DlgResult = 'cancel'
             $script:Dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         })
+
     $script:DlgCurAuth.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
     $script:DlgPwd1.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
     $script:DlgPwd2.Add_TextChanged({ if ($script:DlgErr.Visible) { $script:DlgErr.Visible = $false } })
+
+    
     if ($script:Scale -gt 1.01) {
         $script:Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
         $script:Dlg.Font = New-Object System.Drawing.Font($family, [float]9)
@@ -1162,6 +1434,7 @@ function Show-RebuildDialog {
         $cancel.Font = New-Object System.Drawing.Font($family, [float]10)
         $tip.Font = New-Object System.Drawing.Font($family, [float]8.5)
     }
+
     $result = $script:Dlg.ShowDialog()
     try { $script:Dlg.Dispose() } catch { }
     $script:Dlg = $null
@@ -1172,14 +1445,28 @@ function Show-RebuildDialog {
     $script:DlgStore = $null
     return $script:DlgResult
 }
+
+
+
+
 if (-not $SelfTest) {
+    
+
+    
     $script:Mutex = New-Object System.Threading.Mutex($false, 'Local\CAScreenGuard.SingleInstance')
     $hasMutex = $false
     try { $hasMutex = $script:Mutex.WaitOne(0) }
-    catch [System.Threading.AbandonedMutexException] { $hasMutex = $true }
+    catch [System.Threading.AbandonedMutexException] { $hasMutex = $true }   
     catch { $hasMutex = $false }
     if (-not $hasMutex) {
+        
+        
+        
         [System.Windows.Forms.MessageBox]::Show((T 'k46'), (T 'k66')) | Out-Null
+        exit 0
+    }
+
+    
     $prev = Test-PreviousSession
     Remove-RunningFlag
     if ($prev) {
@@ -1190,11 +1477,13 @@ if (-not $SelfTest) {
             [System.Windows.Forms.MessageBox]::Show((T 'k62'), (T 'k60'), 'OK', 'Warning') | Out-Null
         }
     }
-        exit 0
-    }
+
+    
+    
     $script:AutoReset = [bool]$ResetPassword
     $script:Config = Read-PasswordConfig
     $integrity = Test-ConfigIntegrity -ConfigRecord $script:Config -RawText $script:ConfigRaw
+
     if ($integrity -ne 'ok') {
         if ($integrity -eq 'fresh') {
             [System.Windows.Forms.MessageBox]::Show(
@@ -1209,6 +1498,7 @@ if (-not $SelfTest) {
             exit 0
         }
         else {
+            
             $outcome = Show-RebuildDialog
             if ($outcome -ne 'ok') {
                 $note = (T 'k50')
@@ -1222,11 +1512,17 @@ if (-not $SelfTest) {
     }
 }
 else {
+    
     $script:Config = New-PasswordRecord -Password 'selftest-dummy-pw'
 }
+
+
+
+
 $family = 'Microsoft YaHei UI'
 $cardW = 580
-$cardH = 352
+$cardH = 352                          
+
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = 'CAScreenGuard'
 $script:Form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -1237,6 +1533,7 @@ $script:Form.ShowInTaskbar = $false
 $script:Form.KeyPreview = $true
 $script:Form.BackColor = [System.Drawing.Color]::Black
 $script:Form.ImeMode = [System.Windows.Forms.ImeMode]::Disable
+
 $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
 $card.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
@@ -1245,6 +1542,7 @@ $cardX = [int](($primary.X + ($primary.Width - $cardW) / 2) - $script:Form.Bound
 $cardY = [int](($primary.Y + ($primary.Height - $cardH) / 2) - $script:Form.Bounds.Y)
 $card.Location = New-Object System.Drawing.Point($cardX, $cardY)
 $script:Form.Controls.Add($card)
+
 $title = New-Object System.Windows.Forms.Label
 $title.AutoSize = $false
 $title.Text = (T 'k54')
@@ -1253,6 +1551,7 @@ $title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $title.SetBounds(0, 40, $cardW, 52)
 $card.Controls.Add($title)
+
 $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.AutoSize = $false
 $subtitle.Text = (T 'k55')
@@ -1261,6 +1560,7 @@ $subtitle.ForeColor = [System.Drawing.Color]::FromArgb(152, 158, 166)
 $subtitle.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $subtitle.SetBounds(0, 96, $cardW, 26)
 $card.Controls.Add($subtitle)
+
 $boxW = 400
 $boxH = 52
 $box = New-Object System.Windows.Forms.Panel
@@ -1268,6 +1568,7 @@ $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
 $box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 142)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
 $card.Controls.Add($box)
+
 $script:Txt = New-Object System.Windows.Forms.TextBox
 $script:Txt.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $script:Txt.Font = New-Object System.Drawing.Font($family, [float]17)
@@ -1279,6 +1580,7 @@ $script:Txt.ImeMode = [System.Windows.Forms.ImeMode]::Disable
 $script:Txt.MaxLength = 128
 $script:Txt.SetBounds(12, 9, $boxW - 24, 26)
 $box.Controls.Add($script:Txt)
+
 $script:TxtError = New-Object System.Windows.Forms.Label
 $script:TxtError.AutoSize = $false
 $script:TxtError.Font = New-Object System.Drawing.Font($family, [float]10)
@@ -1287,9 +1589,11 @@ $script:TxtError.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:TxtError.SetBounds(0, 206, $cardW, 24)
 $script:TxtError.Visible = $false
 $card.Controls.Add($script:TxtError)
+
 $footer1 = New-Object System.Windows.Forms.Label
 $footer1.AutoSize = $false
 $footer1.Text = (T 'k56')
+
 $script:FooterPt = 9.5
 if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
@@ -1297,12 +1601,15 @@ $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $footer1.SetBounds(0, 242, $cardW, 22)
 $card.Controls.Add($footer1)
+
 $footer2 = New-Object System.Windows.Forms.Label
 $footer2.AutoSize = $false
 $footer2.Text = (T 'k57')
 $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
 $footer2.ForeColor = [System.Drawing.Color]::FromArgb(86, 92, 100)
 $footer2.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+
+
 $script:LockNotice = New-Object System.Windows.Forms.Label
 $script:LockNotice.AutoSize = $false
 $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
@@ -1314,9 +1621,14 @@ $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
 $footer2.SetBounds(0, 266, $cardW, 22)
 $card.Controls.Add($footer2)
+
+
+
+
 if ($script:Scale -gt 1.01) {
     $script:Form.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
     $script:Form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    
     $primaryNow = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
     $card.Left = [int]($primaryNow.X + ($primaryNow.Width - $card.Width) / 2) - $script:Form.Bounds.X
     $card.Top = [int]($primaryNow.Y + ($primaryNow.Height - $card.Height) / 2) - $script:Form.Bounds.Y
@@ -1328,29 +1640,38 @@ if ($script:Scale -gt 1.01) {
     $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
+
+
 $script:Form.Add_Shown({
         try { [ScreenLockNative]::DisableIme($script:Txt.Handle) } catch { }
         if ($script:Txt.Enabled) { $null = $script:Txt.Focus() }
     })
+
 $script:Form.Add_Activated({
         if ($script:Txt.Enabled) { $null = $script:Txt.Focus() }
     })
+
 $script:Form.Add_FormClosing({
         param($sender, $e)
         if (-not $script:AllowClose) { $e.Cancel = $true }
     })
+
 $script:Form.Add_KeyDown({
         param($sender, $e)
+        
         if ($e.Alt -and ($e.KeyCode -eq [System.Windows.Forms.Keys]::F4)) {
             $e.SuppressKeyPress = $true
             return
         }
+        
         if ($e.Control -and $e.Alt -and $e.Shift -and ($e.KeyCode -eq [System.Windows.Forms.Keys]::E)) {
             $e.SuppressKeyPress = $true
             Invoke-ChangePasswordFlow
             return
         }
     })
+
+
 $script:Form.Add_KeyPress({
         param($sender, $e)
         if ($script:Txt.Enabled -and -not $script:Txt.Focused -and $e.KeyChar -and ([int]$e.KeyChar -ge 32)) {
@@ -1358,16 +1679,20 @@ $script:Form.Add_KeyPress({
             $e.Handled = $true
         }
     })
+
 $script:Txt.Add_KeyDown({
         param($sender, $e)
         $code = $e.KeyCode
+
         if ($e.Control -and (($code -eq [System.Windows.Forms.Keys]::Back) -or ($code -eq [System.Windows.Forms.Keys]::U))) {
+            
             $e.SuppressKeyPress = $true
             $sender.Clear()
             Hide-ErrorMsg
             return
         }
         if ($code -eq [System.Windows.Forms.Keys]::Escape) {
+            
             $e.SuppressKeyPress = $true
             Invoke-GoDark
             return
@@ -1378,10 +1703,13 @@ $script:Txt.Add_KeyDown({
             return
         }
     })
+
 $script:Txt.Add_TextChanged({
         if ($script:CooldownActive) { return }
         Hide-ErrorMsg
     })
+
+
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = 250
 if ($SelfTest) {
@@ -1391,12 +1719,15 @@ if ($SelfTest) {
 else {
     $script:Timer.Add_Tick({ Invoke-GuardTick })
 }
+
+
 function Add-SelfTestResult {
     param([bool]$Ok, [string]$Name, [string]$Detail)
     $tag = 'PASS'
     if (-not $Ok) { $tag = 'FAIL'; $script:SelfTestFailed = $true }
     $script:SelfTestLog.Add(("[{0}] {1}：{2}" -f $tag, $Name, $Detail))
 }
+
 function Invoke-SelfTestTick {
     try {
         switch ($script:SelfTestStep) {
@@ -1404,7 +1735,9 @@ function Invoke-SelfTestTick {
                 $b = $script:Form.Bounds
                 Add-SelfTestResult (($b.Width -ge $primary.Width) -and ($b.Height -ge $primary.Height)) '遮罩尺寸' ("{0}x{1}" -f $b.Width, $b.Height)
                 Add-SelfTestResult ($script:Form.Controls.Count -ge 1) '界面构建' ("控件数 {0}" -f $script:Form.Controls.Count)
-                Add-SelfTestResult (([ScreenLockNative]::GetLastInputTick() -ne 0)) '输入空闲接口' ("tick={0}, idle={1}ms" -f [ScreenLockNative]::GetLastInputTick(), [ScreenLockNative]::GetIdleMilliseconds())
+                $tickNow = [ScreenLockNative]::GetLastInputTick()
+                
+                Add-SelfTestResult (($tickNow -ne 0) -and ($tickNow -ne [uint32]::MaxValue)) '输入空闲接口' ("tick={0}, idle={1}ms" -f $tickNow, [ScreenLockNative]::GetIdleMilliseconds())
                 $script:Txt.Text = 'wrong-password'
                 Invoke-SubmitAttempt
                 Add-SelfTestResult (($script:Txt.Text.Length -eq 0) -and $script:TxtError.Visible -and ($script:FailCount -eq 1)) '错误密码处理' ("已清空输入、显示提示、计数={0}" -f $script:FailCount)
@@ -1432,6 +1765,7 @@ function Invoke-SelfTestTick {
         try { $script:Form.Close() } catch { }
     }
 }
+
 if ($SelfTest) {
     $tmpDir = Join-Path $env:TEMP ('ScreenLockSelfTest_' + [guid]::NewGuid().ToString('N'))
     try {
@@ -1443,6 +1777,8 @@ if ($SelfTest) {
         $reloaded = Read-PasswordConfig
         Add-SelfTestResult (($null -ne $reloaded) -and (Test-PasswordRecord -Password 'selftest-dummy-pw' -Record $reloaded)) '配置文件读写' "目录 $tmpDir"
         Add-SelfTestResult (-not (Test-PasswordRecord -Password 'wrong' -Record $script:Config)) '错误密码不会被接受' 'PBKDF2 校验'
+
+        
         $savedReg = $script:StoreRegPath
         $savedMirror = $script:StoreMirrorPath
         $script:StoreRegPath = 'HKCU:\Software\CAScreenGuardSelfTest'
@@ -1470,6 +1806,7 @@ if ($SelfTest) {
             $script:StoreMirrorPath = $savedMirror
             Remove-Item -LiteralPath 'HKCU:\Software\CAScreenGuardSelfTest' -Recurse -Force -ErrorAction SilentlyContinue
         }
+
         $script:ConfigCandidates = $savedCandidates
     }
     catch {
@@ -1479,13 +1816,20 @@ if ($SelfTest) {
         Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
+
+
+
 try {
     if (-not $SelfTest) { Initialize-SystemState }
+
     $script:Form.Show()
+    
     [ScreenLockNative]::TargetWindow = $script:Form.Handle
-    if (-not $SelfTest) { New-RunningFlag }
+    if (-not $SelfTest) { New-RunningFlag }   
     if (-not $SelfTest) {
         if ($script:AutoReset) {
+            
             $script:State = 'Prompt'
         }
         else {
@@ -1498,12 +1842,15 @@ try {
     else {
         $script:State = 'Prompt'
     }
+
     if ($script:AutoReset -and -not $SelfTest) { Invoke-ChangePasswordFlow }
+
     $script:Timer.Start()
     [System.Windows.Forms.Application]::Run($script:Form)
 }
 catch {
     $msg = $_.Exception.Message
+
     if (-not $SelfTest) { $null = Write-CrashLog -ErrorRecord $_ -Where 'run' }
     try { $script:SelfTestFailed = $true } catch { }
     try {
@@ -1515,7 +1862,7 @@ finally {
     $script:AllowClose = $true
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
-    Restore-SystemState
+    Restore-SystemState        
     if ($SelfTest) {
         Write-Host ''
         Write-Host '================ CAScreenGuard 自检结果 ================'

@@ -22,7 +22,15 @@ jobs:
       - name: Build the zip from this tag
         run: |
           set -e
-          FILES=".gitattributes .gitignore build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CHANGELOG.md Installer.cs LICENSE make-icon.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png"
+          FILES=".gitattributes .gitignore build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CHANGELOG.md CHANGELOG.zh-CN.md Installer.cs LICENSE make-icon.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png"
+          # 清单是手写的，很容易漏：漏了就在这里失败，别偷偷少发东西
+          for f in $(git ls-files); do
+            case " $FILES " in
+              *" $f "*) ;;
+              .github/*) ;;
+              *) echo "ERROR: $f 不在打包清单里"; exit 1 ;;
+            esac
+          done
           zip -r "CAScreenGuard-${GITHUB_REF_NAME}-all.zip" $FILES
           unzip -l "CAScreenGuard-${GITHUB_REF_NAME}-all.zip"
 

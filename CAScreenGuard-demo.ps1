@@ -82,8 +82,8 @@ $script:T = @{
     zh = @{
         k01 = "CAScreenGuard 缺少必需的文件：`n`n"
         k02 = "`n`n脚本、两个 .cs 和图标必须放在同一个目录里。请重新运行安装程序。"
-        k03 = 'CAScreenGuard V1.0.0 · 文件不完整'
-        k04 = 'CAScreenGuard V1.0.0 · 发生错误'
+        k03 = 'CAScreenGuard ' + $script:AppVersion + ' · 文件不完整'
+        k04 = 'CAScreenGuard ' + $script:AppVersion + ' · 发生错误'
         k05 = '无法保存密码配置。'
         k06 = "密码错误次数较多，请等待 {0} 秒后再试"
         k07 = "密码错误次数较多，请等待 {0} 秒后再试"
@@ -91,7 +91,7 @@ $script:T = @{
         k09 = '密码不正确，请重新输入'
         k10 = '本机没有可用的授权码，无法修改解锁密码。请重新运行安装程序。'
         k11 = '（未设置提示）'
-        k12 = 'CAScreenGuard V1.0.0 · 修改解锁密码'
+        k12 = 'CAScreenGuard ' + $script:AppVersion + ' · 修改解锁密码'
         k13 = '修改解锁密码'
         k14 = "为确认是你本人，需要先输入授权码。（区分大小写）`n授权码提示：{0}"
         k15 = '授权码'
@@ -108,7 +108,7 @@ $script:T = @{
         k26 = '授权码连续错误 3 次，已取消修改'
         k27 = '本机没有可用的授权码，无法修改解锁密码'
         k28 = '（没有留下提示）'
-        k29 = 'CAScreenGuard V1.0.0 · 配置需要重建'
+        k29 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置需要重建'
         k30 = '保存解锁密码的文件不见了，或者被动过'
         k31 = "这多半不是意外：文件要么被删除、要么被改写，原来的解锁密码已经作废。`n"
         k32 = "在确认是你本人之前，CAScreenGuard 不会重新开始 —— 免得有人趁这个机会换掉解锁密码。`n"
@@ -128,31 +128,32 @@ $script:T = @{
         k46 = 'CAScreenGuard 已经在运行中，无需重复启动。'
         k47 = "本机还没有装过 CAScreenGuard。`n`n请先运行安装程序（CAScreenGuard-Setup.exe）：解锁密码和授权码都在安装向导里设置，装好后用桌面上的快捷方式启动。"
         k48 = "本机缺少 CAScreenGuard 的凭证，没法核实这份配置是谁写的。`n`n为了不让人趁这个机会换掉解锁密码，这次不会启动屏锁。`n请重新运行安装程序（先卸载，再安装）。"
-        k49 = 'CAScreenGuard V1.0.0 · 配置无法核实'
+        k49 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置无法核实'
         k50 = '你取消了重建，所以这次不会启动屏锁。'
         k51 = '授权码连续输错 3 次，所以这次不会启动屏锁。'
         k52 = "解锁密码没有重建成功。`n`n"
-        k53 = 'CAScreenGuard V1.0.0 · 配置需要重建'
+        k53 = 'CAScreenGuard ' + $script:AppVersion + ' · 配置需要重建'
         k54 = '息屏保护中'
         k55 = '输入解锁密码，按 Enter 恢复屏幕'
         k56 = 'Enter 解锁　·　Ctrl+Backspace 清空　·　Esc 立即息屏　·　Ctrl+Shift+Alt+E 修改密码'
         k57 = '屏幕熄灭时，系统与后台任务仍在运行，请注意电量管理。'
-        k58 = 'CAScreenGuard V1.0.0 · 发生错误'
-        k59 = "如果您确信你没有记错认证码，则您应该考虑您是否遭受了有预谋的攻击。若您先前已经收到配置文件遭到篡改的通知，你应该立刻修改电脑密码，运行最新的杀毒软件并检查你物理工作环境的安全性，稍后重新安装此软件可以解决此问题。"
-        k60 = "CAScreenGuard V1.0.0 · 上次没有正常结束"
+        k58 = 'CAScreenGuard ' + $script:AppVersion + ' · 发生错误'
+        k59 = "如果您确信没有记错授权码，则应该考虑这是否是一次有预谋的攻击。"
+        k75 = "您先前收到过配置被动过的通知，且授权码连续输错：请立刻修改电脑密码、运行最新的杀毒软件，并检查您物理工作环境的安全性。重新安装本软件可以解决当前状态。"
+        k60 = "CAScreenGuard " + $script:AppVersion + " · 上次没有正常结束"
         k61 = "上次息屏锁没有正常退出，但留下了崩溃日志：`n{0}`n`n这是软件自己出错退出的，不是被人关机。请把这份日志和复现步骤一起反馈。`n`n顺便检查一下电源设置：睡眠 / 休眠 / 合盖 如果设得太激进，也会在锁屏期间把它打断。"
         k62 = "上次息屏锁没有正常退出，也没有留下崩溃日志。`n`n也就是说它不是自己崩的：可能是有人按了电源键、用 Ctrl+Alt+Del 注销或关机，或者直接结束了进程。`n`n如果你刚刚回到工位、并没有重启电脑就看到这条消息，请立刻修改电脑密码、运行最新的杀毒软件、检查你物理工作环境的安全性，然后重新安装本软件。`n`n也请顺便检查电源设置：睡眠 / 休眠 / 合盖 如果设得太激进，也会在锁屏期间把它打断。"
         k63 = "已禁止输入密码"
         k64 = "请使用物理按键关机，或使用 Ctrl+Alt+Del 呼出安全界面关机"
-        k65 = "已禁止输入认证码"
-        k66 = "CAScreenGuard V1.0.0"
+        k65 = "已禁止输入授权码"
+        k66 = "CAScreenGuard " + $script:AppVersion
         k67 = "这条封禁已经写进本机记录：关闭或重新打开本程序都不会解除，只有重新安装才能恢复。"
     }
     en = @{
         k01 = "CAScreenGuard is missing required files:`n`n"
         k02 = "`n`nThe script, both .cs files and the icon must live in the same folder. Please run the installer again."
-        k03 = "CAScreenGuard V1.0.0 · Incomplete files"
-        k04 = "CAScreenGuard V1.0.0 · Error"
+        k03 = "CAScreenGuard " + $script:AppVersion + " · Incomplete files"
+        k04 = "CAScreenGuard " + $script:AppVersion + " · Error"
         k05 = "Could not save the password configuration."
         k06 = "Too many wrong passwords. Please wait {0} seconds and try again."
         k07 = "Too many wrong passwords. Please wait {0} seconds and try again."
@@ -160,7 +161,7 @@ $script:T = @{
         k09 = "Wrong password, please try again"
         k10 = "No usable authorization code on this machine, so the unlock password cannot be changed. Please run the installer again."
         k11 = "(no hint set)"
-        k12 = "CAScreenGuard V1.0.0 · Change unlock password"
+        k12 = "CAScreenGuard " + $script:AppVersion + " · Change unlock password"
         k13 = "Change unlock password"
         k14 = "To confirm it is really you, enter the authorization code first. (case-sensitive)`nAuthorization hint: {0}"
         k15 = "Authorization code"
@@ -177,7 +178,7 @@ $script:T = @{
         k26 = "Wrong authorization code 3 times, change cancelled"
         k27 = "No usable authorization code, the unlock password cannot be changed"
         k28 = "(no hint was saved)"
-        k29 = "CAScreenGuard V1.0.0 · Configuration needs to be rebuilt"
+        k29 = "CAScreenGuard " + $script:AppVersion + " · Configuration needs to be rebuilt"
         k30 = "Unlock password file is gone or modified"
         k31 = "This is most likely not an accident: the file was either deleted or rewritten, so the old unlock password no longer counts.`n"
         k32 = "CAScreenGuard will not start over until it knows it is you — otherwise someone could swap the unlock password right here.`n"
@@ -197,24 +198,25 @@ $script:T = @{
         k46 = "CAScreenGuard is already running, no need to start it twice."
         k47 = "CAScreenGuard has not been installed on this machine yet.`n`nPlease run the installer first (CAScreenGuard-Setup.exe): the unlock password and the authorization code are set in the setup wizard, then start it from the desktop shortcut."
         k48 = "This machine is missing CAScreenGuard credentials, so this configuration cannot be trusted.`n`nTo keep someone from swapping the unlock password right now, the screen lock will not start.`nPlease run the installer again (uninstall first, then install)."
-        k49 = "CAScreenGuard V1.0.0 · Configuration cannot be verified"
+        k49 = "CAScreenGuard " + $script:AppVersion + " · Configuration cannot be verified"
         k50 = "You cancelled the rebuild, so the screen lock will not start."
         k51 = "3 wrong authorization codes, so the screen lock will not start."
         k52 = "The unlock password was not rebuilt.`n`n"
-        k53 = "CAScreenGuard V1.0.0 · Configuration needs to be rebuilt"
+        k53 = "CAScreenGuard " + $script:AppVersion + " · Configuration needs to be rebuilt"
         k54 = "Screen protected"
         k55 = "Type your unlock password and press Enter to restore the screen"
         k56 = "Enter unlock · Ctrl+Backspace clear · Esc blank now · Ctrl+Shift+Alt+E change password"
         k57 = "The screen is off, but the system and background tasks keep running — mind your battery."
-        k58 = "CAScreenGuard V1.0.0 · Error"
-        k59 = "If you are sure you did not mistype the authorization code, then you should consider whether you are under a deliberate attack. If you have already been told that the configuration file was tampered with, change your Windows password now, run a fully updated antivirus scan and check the physical safety of your workspace. Reinstalling this software afterwards will resolve the current state."
-        k60 = "CAScreenGuard V1.0.0 · The last session did not end cleanly"
+        k58 = "CAScreenGuard " + $script:AppVersion + " · Error"
+        k59 = "If you are sure you did not mistype the authorization code, consider whether this is a deliberate attack."
+        k75 = "You were already told that the configuration file had been tampered with, and the authorization code was then mistyped three times: change your Windows password now, run a fully updated antivirus scan and check the physical safety of your workspace. Reinstalling this software will resolve the current state."
+        k60 = "CAScreenGuard " + $script:AppVersion + " · The last session did not end cleanly"
         k61 = "The last lock session did not exit cleanly, but it left a crash log:`n{0}`n`nSo the software itself failed — this was not someone shutting the machine down. Please report that log together with the steps that led to it.`n`nWhile you are here, check your power settings: aggressive sleep / hibernate / lid-close actions can also interrupt the lock."
         k62 = "The last lock session did not exit cleanly, and it left no crash log.`n`nSo it did not crash by itself: someone may have pressed the power button, signed out or shut down via Ctrl+Alt+Del, or simply killed the process.`n`nIf you have just come back to your desk and did NOT restart the computer before seeing this, change your Windows password now, run a fully updated antivirus scan, check the physical safety of your workspace, and then reinstall this software.`n`nAlso check your power settings: aggressive sleep / hibernate / lid-close actions can interrupt the lock too."
         k63 = "Password entry is disabled"
         k64 = "Power off using the physical power button, or press Ctrl+Alt+Del and shut down from the security screen"
         k65 = "Authorization code entry is disabled"
-        k66 = "CAScreenGuard V1.0.0"
+        k66 = "CAScreenGuard " + $script:AppVersion
         k67 = "This block has been recorded on this machine: closing or reopening the program will not lift it — only reinstalling can."
     }
 }
@@ -288,6 +290,9 @@ if (-not ('ScreenLockNative' -as [type])) {
 # ==================================================================
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'CAScreenGuard'
 $script:FlagPath = Join-Path $script:StateDir 'running.flag'
+# 改屏保设置之前，把系统原来的值落一份盘：进程被强杀/断电时 finally 不会跑，
+# 只存在内存里的"原值"就丢了，下次启动读到的会是被我们改成 0 的那个值 —— 屏保就永久关着。
+$script:PresavePath = Join-Path $script:StateDir 'screen-saver-original.json'
 
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
@@ -353,6 +358,26 @@ function Write-CrashLog {
     } catch { return $null }
 }
 
+function Write-TickError {
+    # 定时器里抛的异常：不能弹窗（会打断遮罩上的操作），也不能写进 crash-*.log
+    # （那会被下次启动当成"软件崩了"报警）。单独落一个 tick-errors.log。
+    # 只在"错误内容变了"时写一次，否则 250ms 一条会把盘写满。
+    param([string]$Message)
+    try {
+        if ([string]::IsNullOrEmpty($Message)) { return }
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        $path = Join-Path $script:StateDir 'tick-errors.log'
+        if (Test-Path -LiteralPath $path) {
+            if ((Get-Item -LiteralPath $path -Force).Length -gt 65536) {
+                [System.IO.File]::WriteAllText($path, '', (New-Object System.Text.UTF8Encoding($false)))
+            }
+        }
+        [System.IO.File]::AppendAllText($path,
+            ((Get-Date).ToString('s') + '  ' + $Message + "`r`n"),
+            (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Test-PreviousSession {
     # 上一次没正常结束就返回一个对象（含开始时间与崩溃日志路径），正常结束返回 $null
     if (-not (Test-Path -LiteralPath $script:FlagPath)) { return $null }
@@ -397,7 +422,7 @@ $script:BlankTick = [uint32]0       # 熄屏那一刻的「最后一次输入」
 $script:LastBlankSent = [datetime]::MinValue
 $script:FailCount = 0
 $script:TxtLockedOut     = $false          # 密码连错太多次 -> 禁止继续输入，只能关机
-$script:AuthLockedOut   = $false          # 认证码连错 3 次 -> 本次会话内禁止再输
+$script:AuthLockedOut   = $false          # 授权码连错 3 次 -> 本次会话内禁止再输
 $script:CooldownActive = $false
 $script:CooldownUntil = [datetime]::MinValue
 $script:OrigScreenSaver = $null
@@ -455,11 +480,15 @@ function Hide-ErrorMsg {
 }
 
 function Set-AuthLockedUI {
-    # 认证码连错 3 次：底部挂红色警告 + 把对话框里所有输入都锁掉，只留"退出/取消"
+    # 授权码连错 3 次：底部挂红色警告 + 把对话框里所有输入都锁掉，只留"退出/取消"
     # -Permanent：这次封禁是落盘的，重启程序也不会解除，所以在警告里说清楚
     param($Dlg, $Tip, [switch]$Permanent)
     try {
-        $body = (T 'k59') + "`r`n`r`n" + (T 'k65')
+        $body = (T 'k59')
+        # 「配置遭篡改」那一段只在"配置需要重建"这条路上说 ——
+        # 正常的改密码窗口里配置根本没被动过，说这个是凭空恐吓
+        if ($Permanent) { $body += "`r`n" + (T 'k75') }
+        $body += "`r`n`r`n" + (T 'k65')
         if ($Permanent) { $body += "`r`n" + (T 'k67') }
         $Tip.Text = $body + "`r`n" + (T 'k64')
         $Tip.ForeColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
@@ -476,7 +505,7 @@ function Set-AuthLockedUI {
         if ($Dlg.ClientSize.Height -lt $wantH) {
             $Dlg.ClientSize = New-Object System.Drawing.Size($Dlg.ClientSize.Width, $wantH)
         }
-        # 认证码都连错 3 次了：锁屏那个密码框也一起禁掉，和密码连错 8 次同等待遇
+        # 授权码都连错 3 次了：锁屏那个密码框也一起禁掉，和密码连错 8 次同等待遇
         $script:TxtLockedOut = $true
         try { $script:Txt.Enabled = $false } catch { }
         try { $script:LockNotice.Visible = $true } catch { }
@@ -703,7 +732,7 @@ function Read-IntegrityStore {
     return $null
 }
 
-# ------------------------------------------------------------------ 认证码永久封禁
+# ------------------------------------------------------------------ 授权码永久封禁
 # 和"另一个窗口连错 3 次"不同：配置被动过的那条路上，三次输不对授权码就当作有预谋的尝试，
 # 封禁要落盘 —— 注册表和 APPDATA 各记一份，重启程序照样禁止输入，只有重新安装才能清掉。
 # 只在两处都写不进去时才退化成"本次运行内禁止"。
@@ -793,7 +822,8 @@ function Test-ConfigIntegrity {
     if (-not $ConfigRecord.marker) { return 'modified' }
     if ([string]::IsNullOrEmpty($RawText)) { return 'modified' }
     $canonical = Get-ConfigCanonical -Text $RawText
-    if ((Get-ConfigMarker -Text $canonical -KeyB64 $store.markerKey) -ne $ConfigRecord.marker) { return 'modified' }
+    # -cne 而不是 -ne：PowerShell 的比较默认不区分大小写，而 base64 的大小写是有意义的
+    if ((Get-ConfigMarker -Text $canonical -KeyB64 $store.markerKey) -cne $ConfigRecord.marker) { return 'modified' }
     return 'ok'
 }
 
@@ -911,17 +941,50 @@ function Invoke-GuardTick {
         }
     }
     catch {
-        $script:LastTickError = $_.Exception.Message   # 不再静默吞掉，便于排查
+        # 只有"错误内容变了"才落盘：定时器 250ms 一次，不能每次都写
+        $msg = $_.Exception.Message
+        if ($msg -ne $script:LastTickError) {
+            $script:LastTickError = $msg
+            Write-TickError -Message $msg
+        }
     }
 }
 
 # ------------------------------------------------------------------ 系统状态
+function Restore-PendingScreenSaverSave {
+    # 上一次要是被强杀/断电结束的，屏保设置会停在"被我们关掉"的状态，而原值只在这份文件里。
+    # 先把系统恢复成原样，再走正常流程 —— 否则这次读到的"原值"就是那个 0，屏保会永久关着。
+    try {
+        if (-not (Test-Path -LiteralPath $script:PresavePath)) { return }
+        $saved = [System.IO.File]::ReadAllText($script:PresavePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        if ($null -ne $saved.reg) {
+            Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -Value $saved.reg -ErrorAction SilentlyContinue
+        }
+        if ($null -ne $saved.spi) { [ScreenLockNative]::SetScreenSaverActive(([int]$saved.spi) -ne 0) }
+        Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue
+    } catch { }
+}
+
+function Save-ScreenSaverPrerestore {
+    try {
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        $o = [pscustomobject]@{
+            reg     = $script:OrigScreenSaverReg
+            spi     = $script:OrigScreenSaver
+            savedAt = (Get-Date).ToString('s')
+        }
+        [System.IO.File]::WriteAllText($script:PresavePath, ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
 function Initialize-SystemState {
+    Restore-PendingScreenSaverSave          # 先补上一次没还原掉的
     try { $script:OrigScreenSaver = [ScreenLockNative]::GetScreenSaverActive() } catch { $script:OrigScreenSaver = $null }
     try {
         $script:OrigScreenSaverReg = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction Stop).ScreenSaveActive
     }
     catch { $script:OrigScreenSaverReg = $null }
+    Save-ScreenSaverPrerestore              # 改之前先把原值落盘
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
     try { [ScreenLockNative]::KeepSystemAwake() } catch { }
     # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露
@@ -967,6 +1030,7 @@ function Restore-SystemState {
         }
     }
     catch { }
+    try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
     try { [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 
@@ -1112,7 +1176,7 @@ function Show-ChangePasswordDialog {
                     Set-AuthLockedUI -Dlg $script:CpwDlg -Tip $script:CpwTip -Permanent:$script:AuthBanned
                     return
                 }
-                # 输错认证码不给任何提示：既不确认"你猜的这个不对"，也不告诉还剩几次机会
+                # 输错授权码不给任何提示：既不确认"你猜的这个不对"，也不告诉还剩几次机会
                 $script:CpwErr.Visible = $false
                 $script:CpwAuth.Clear()
                 $null = $script:CpwAuth.Focus()
@@ -1353,7 +1417,7 @@ function Show-RebuildDialog {
                     Set-AuthLockedUI -Dlg $script:Dlg -Tip $tip -Permanent
                     return
                 }
-                # 输错认证码不给任何提示
+                # 输错授权码不给任何提示
                 $script:DlgErr.Visible = $false
                 $script:DlgCurAuth.Clear()
                 $null = $script:DlgCurAuth.Focus()
@@ -1437,7 +1501,12 @@ if (-not $SelfTest) {
     catch [System.Threading.AbandonedMutexException] { $hasMutex = $true }   # 上次被强杀留下的锁，按"可用"处理
     catch { $hasMutex = $false }
     if (-not $hasMutex) {
+        # 已经有一份在跑了：只留一句提示就走。
+        # 注意别把下面的"上次没正常结束"检查卷进这一支 —— 那样正常启动时它永远不会执行，
+        # 而"已有实例"时又会误报（标记文件正是隔壁那一份自己建的）。
         [System.Windows.Forms.MessageBox]::Show((T 'k46'), (T 'k66')) | Out-Null
+        exit 0
+    }
 
     # 上一次是不是没正常结束？报告完就把旧标记清掉，免得每次启动都翻旧账
     $prev = Test-PreviousSession
@@ -1449,8 +1518,6 @@ if (-not $SelfTest) {
         else {
             [System.Windows.Forms.MessageBox]::Show((T 'k62'), (T 'k60'), 'OK', 'Warning') | Out-Null
         }
-    }
-        exit 0
     }
 
     # 配置只能由安装程序预置。先判定它有没有被动过，再决定能不能开锁 ——
@@ -1710,7 +1777,9 @@ function Invoke-SelfTestTick {
                 $b = $script:Form.Bounds
                 Add-SelfTestResult (($b.Width -ge $primary.Width) -and ($b.Height -ge $primary.Height)) '遮罩尺寸' ("{0}x{1}" -f $b.Width, $b.Height)
                 Add-SelfTestResult ($script:Form.Controls.Count -ge 1) '界面构建' ("控件数 {0}" -f $script:Form.Controls.Count)
-                Add-SelfTestResult (([ScreenLockNative]::GetLastInputTick() -ne 0)) '输入空闲接口' ("tick={0}, idle={1}ms" -f [ScreenLockNative]::GetLastInputTick(), [ScreenLockNative]::GetIdleMilliseconds())
+                $tickNow = [ScreenLockNative]::GetLastInputTick()
+                # GetLastInputTick 失败时返回 uint.MaxValue，所以 0 和 MaxValue 都不算"拿到了有效 tick"
+                Add-SelfTestResult (($tickNow -ne 0) -and ($tickNow -ne [uint32]::MaxValue)) '输入空闲接口' ("tick={0}, idle={1}ms" -f $tickNow, [ScreenLockNative]::GetIdleMilliseconds())
                 $script:Txt.Text = 'wrong-password'
                 Invoke-SubmitAttempt
                 Add-SelfTestResult (($script:Txt.Text.Length -eq 0) -and $script:TxtError.Visible -and ($script:FailCount -eq 1)) '错误密码处理' ("已清空输入、显示提示、计数={0}" -f $script:FailCount)

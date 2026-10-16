@@ -1,6 +1,13 @@
-# CAScreenGuard
+﻿# CAScreenGuard
 
 [English](README.md) · **简体中文**
+
+# 来自作者：这个软件要做什么？
+
+**在主机处于无人值守状态下，保持长流程的工作正常进行并保护您后台正在进行的工作和私密文件免于任何不可察觉的偷窥、窃取和破解手段**
+
+# 此软件如何编写？
+*与DeepSeek v4.1 flash和Kimi Code、DeepSeek Harness共同构建。*
 
 走开时让它替你看着屏幕：**只关显示器**（不休眠、不锁定 Windows 会话、保持系统唤醒），
 最上层盖一层全屏黑幕挡住桌面内容；只有输对解锁密码，才会恢复屏幕并退出。
@@ -18,9 +25,11 @@
 
 **怎么拿到它**：`git clone` 本仓库，或者到 [Releases](https://github.com/Conste11ation117/CAScreenGuard/releases)
 下载 `CAScreenGuard-Setup.exe`（仓库里那份是同一个文件）。双击安装向导，两分钟装完。
-Release 里另外提供一份 `CAScreenGuard-1.0-all.zip`，是同一个包，方便离线拷走。
+Release 里另外提供一份 `CAScreenGuard-v1.0.0-all.zip`，是同一个包，方便离线拷走。
 
 ---
+## 零、元定位
+**在主机处于无人值守状态下，保持长流程的工作正常进行并保护您后台正在进行的工作和私密文件免于任何不可察觉的偷窥、窃取和破解手段。**
 
 ## 一、它适合做什么、不适合做什么
 
@@ -89,10 +98,10 @@ Release 里另外提供一份 `CAScreenGuard-1.0-all.zip`，是同一个包，�
 
 ## 四、关机 / 崩溃监测
 
-- 进入锁屏时写标记 `%LOCALAPPDATA%\CAScreenGuard\state\running.flag`，正常解锁退出时删除。
+- 进入锁屏时写标记 `%LOCALAPPDATA%\CAScreenGuard\running.flag`，正常解锁退出时删除。
 - 下次启动若发现它还在，说明上次没正常结束，会分两种情况告诉你：
   - **有崩溃日志** → 软件自身出错，给出日志路径，请连同复现步骤反馈
-    （日志在 `%LOCALAPPDATA%\CAScreenGuard\state\crash-*.log`，自动只留最近 10 份）；
+    （日志在 `%LOCALAPPDATA%\CAScreenGuard\crash-*.log`，自动只留最近 10 份）；
   - **没有崩溃日志** → 不是它崩的：可能是有人按了电源键、用 `Ctrl+Alt+Del` 注销/关机，或者直接结束了进程。
     会提示你立刻修改电脑密码、运行杀毒软件、检查物理工作环境的安全性，然后重新安装。
 
@@ -175,7 +184,7 @@ powershell -File build-setup.ps1
 3. 归一化所有源文件的 BOM 与行尾（编辑工具常把 BOM 吃掉，会让中文变乱码）
 4. 把四份文件嵌进安装器，编译成 `CAScreenGuard-Setup.exe`
 
-自检（不改动显示器电源）：
+自检（不会关屏）：
 
 ```powershell
 powershell -File CAScreenGuard.ps1 -SelfTest
@@ -189,7 +198,8 @@ powershell -File CAScreenGuard.ps1 -SelfTest
 | `-ResetPassword` | 直接打开「修改解锁密码」（需授权码；这一次不熄屏） |
 | `-IdleBlankSeconds <5..600>` | 无人操作多久自动再次熄屏，默认 25 秒 |
 | `-Lang auto\|zh\|en` | 强制界面语言 |
-| `-SelfTest` | 自检，不改动显示器电源 |
+| `-Ver` | 只显示版本与作者，然后退出（不熄屏） |
+| `-SelfTest` | 自检，不会关屏 |
 
 ---
 

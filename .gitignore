@@ -13,3 +13,6 @@ chk.dll
 .vscode/
 .idea/
 *.user
+# 打包出来的目录：里面是根目录同文件的副本，只为做"离线包"用，不进版本库
+CAScreenGuard-All/
+CAScreenGuard-Setup-windows-x86/

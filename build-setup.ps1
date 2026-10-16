@@ -41,7 +41,11 @@ foreach ($f in @($demoPath, $earlyPath, $nativePath, $instCsPath)) {
     while (($i + 2) -lt $bytes.Length -and $bytes[$i] -eq 0xEF -and $bytes[$i + 1] -eq 0xBB -and $bytes[$i + 2] -eq 0xBF) { $i += 3 }
     $body = New-Object byte[] ($bytes.Length - $i)
     [Array]::Copy($bytes, $i, $body, 0, $body.Length)
-    $text = [System.Text.Encoding]::UTF8.GetString($body)
+    # 严格解码：不是合法 UTF-8 就当场报错。用带替换字符的宽松解码会把源文件
+        # 就地写坏（中文变成 U+FFFD 再也回不来），而这一步正是要"补 BOM"，很容易被忽视。
+        $strict = New-Object System.Text.UTF8Encoding($false, $true)
+        try { $text = $strict.GetString($body) }
+        catch { throw ('源文件不是合法的 UTF-8（可能是 ANSI/GBK）：' + $f + '。先转成 UTF-8 再打包，不要让它被就地改坏。') }
     $text = ($text -split "`r?`n") -join "`r`n"
     $bodyOut = [System.Text.Encoding]::UTF8.GetBytes($text)
     $fixed = New-Object byte[] ($bodyOut.Length + 3)
@@ -63,20 +67,18 @@ function Remove-PsComments {
     $cuts = New-Object System.Collections.Generic.List[int[]]
     foreach ($tk in $tokens) {
         if ($tk.Kind -ne [System.Management.Automation.Language.TokenKind]::Comment) { continue }
-        if ($tk.Text -match '^#Requires') { continue }        # #Requires 是声明，必须留
+        if ($tk.Text -cmatch '^#Requires\s') { continue }     # #Requires 是声明，必须留（大小写敏感）
         $cuts.Add(@($tk.Extent.StartOffset, $tk.Extent.EndOffset))
     }
     $sb = New-Object System.Text.StringBuilder($Text)
     for ($i = $cuts.Count - 1; $i -ge 0; $i--) {
         [void]$sb.Remove($cuts[$i][0], $cuts[$i][1] - $cuts[$i][0])
     }
-    $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($l in ($sb.ToString() -split "`r?`n")) {
-        $t = $l.TrimEnd()
-        if ($t.Trim().Length -eq 0) { continue }
-        $lines.Add($t)
-    }
-    return (($lines -join "`r`n") + "`r`n")
+    # 这里刻意不再做"删空行 + 去行尾空白"：那一步是按行处理的，不认识 token，
+    # 会把 here-string / 逐字字符串里的空行和行尾空格一起吃掉 —— 字符串内容被静默改短，
+    # 而后面那两道 ParseFile / csc 复查都查不出这种语义损坏。
+    # 注释已经删干净了（这才是防破解真正需要的），多留几个空行不影响什么。
+    return ($sb.ToString().TrimEnd([char[]]"`r`n") + "`r`n")
 }
 
 # ---------------- 去注释：C# ----------------
@@ -95,6 +97,9 @@ function Remove-CsComments {
         }
         if ($inBlock) {
             if ($c -eq '*' -and $c2 -eq '/') { $inBlock = $false; $i += 2; continue }
+            # 保留块注释里的换行，否则会把注释两侧的代码拼成一行，
+            # 极端情况下还会把记号粘在一起（int/**/y 变成 inty）
+            if ($c -eq "`n") { [void]$sb.Append($c) }
             $i++; continue
         }
         if ($inStr) {
@@ -119,13 +124,11 @@ function Remove-CsComments {
         if ($c -eq "'") { $inChar = $true; [void]$sb.Append($c); $i++; continue }
         [void]$sb.Append($c); $i++
     }
-    $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($l in ($sb.ToString() -split "`r?`n")) {
-        $t = $l.TrimEnd()
-        if ($t.Trim().Length -eq 0) { continue }
-        $lines.Add($t)
-    }
-    return (($lines -join "`r`n") + "`r`n")
+    # 这里刻意不再做"删空行 + 去行尾空白"：那一步是按行处理的，不认识 token，
+    # 会把 here-string / 逐字字符串里的空行和行尾空格一起吃掉 —— 字符串内容被静默改短，
+    # 而后面那两道 ParseFile / csc 复查都查不出这种语义损坏。
+    # 注释已经删干净了（这才是防破解真正需要的），多留几个空行不影响什么。
+    return ($sb.ToString().TrimEnd([char[]]"`r`n") + "`r`n")
 }
 
 # ---------------- 1. 生成无注释的主脚本 ----------------
@@ -139,7 +142,22 @@ $cmt = @($tk2 | Where-Object { $_.Kind -eq [System.Management.Automation.Languag
 Write-Host ('主脚本：' + $demoText.Length + ' 字符 -> ' + $cleanPs1.Length + ' 字符，剩余注释 ' + $cmt.Count + ' 处（只应剩 #Requires）')
 
 # ---------------- 2. 生成无注释的 C# ----------------
-$buildDir = Join-Path $env:TEMP 'cg_build'
+# csc.exe 处理不了含中文的参数路径，所以整条编译链都在一个纯 ASCII 的中转目录里跑。
+# 如果用户名是中文，%TEMP% 就带中文，这里必须换地方，否则编译会以很难懂的方式失败。
+function Test-AsciiPath([string]$p) {
+    if ([string]::IsNullOrEmpty($p)) { return $false }
+    foreach ($ch in $p.ToCharArray()) { if ([int][char]$ch -gt 126) { return $false } }
+    return $true
+}
+$buildDir = $null
+foreach ($cand in @((Join-Path $env:TEMP 'cg_build'), (Join-Path $env:SystemRoot 'Temp\cg_build'))) {
+    if (-not (Test-AsciiPath $cand)) { continue }
+    try { if (-not (Test-Path -LiteralPath $cand)) { New-Item -ItemType Directory -Path $cand -Force | Out-Null } } catch { continue }
+    $buildDir = $cand
+    break
+}
+if (-not $buildDir) { throw 'ERROR: 找不到一个纯 ASCII 的临时目录来编译（csc 处理不了中文路径）。请设置 TEMP 到一个全英文路径。' }
+Write-Host ('  编译中转目录：' + $buildDir)
 New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
 $cleanEarlyPath = Join-Path $buildDir 'ScreenLockEarly.cs'
 $cleanNativePath = Join-Path $buildDir 'ScreenLockNative.cs'
@@ -197,6 +215,7 @@ if (Test-Path -LiteralPath $outTmp) { Remove-Item -LiteralPath $outTmp -Force }
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $outTmp)) {
     Write-Host '带图标编译失败，改用无图标重试'
     & $csc ($common + @($outArg, $csPath))
+    if ($LASTEXITCODE -ne 0) { throw ('ERROR: compile failed (no-icon retry, exit ' + $LASTEXITCODE + ')') }
 }
 if (-not (Test-Path -LiteralPath $outTmp)) { throw 'ERROR: compile failed' }
 Copy-Item -LiteralPath $outTmp -Destination $outExe -Force

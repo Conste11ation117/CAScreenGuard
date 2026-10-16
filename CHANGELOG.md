@@ -1,123 +1,98 @@
-# Changelog
+﻿# Changelog
 
-本项目的重要变更都记录在这里。
-格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
-版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+All notable changes to this project are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and versioning adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.0] — 2026-10-14
 
-第一个公开版本。
+First public release.
 
-### 核心功能
+### Core features
 
-- **息屏保护**：运行后立刻关闭显示器（**只关屏** —— 不休眠、不锁定 Windows 会话、保持系统唤醒），
-  并在最上层盖一层全屏黑色遮罩挡住桌面内容。只有输对解锁密码才会恢复屏幕并退出。
-- **遮罩期间吞掉系统按键**：`Win`、`Alt+Tab`、`Alt+Esc`、`Ctrl+Esc` 一律拦下，
-  免得有人用开始菜单、任务切换缩略图或 `Win+G` 瞥见桌面。
-- **误操作友好**：`Ctrl+Backspace` 清空已输入内容；`Esc` 立刻再熄屏（内容保留）；
-  无人操作 25 秒自动再熄屏（内容保留，可用 `-IdleBlankSeconds` 调 5–600 秒）。
+- **Display-off protection**: on launch it immediately turns the monitor off (**monitor only** — no sleep, no Windows session lock, the system stays awake) and covers the desktop with a full-screen black mask on the topmost layer. Only the correct unlock password restores the screen and exits.
+- **Swallows system keys while masked**: `Win`, `Alt+Tab`, `Alt+Esc`, `Ctrl+Esc` are all intercepted, so nobody can peek at the desktop via the Start menu, task-switcher thumbnails, or `Win+G`.
+- **Mistake-friendly**: `Ctrl+Backspace` clears what you typed; `Esc` blanks again immediately (typed text kept); after 25 s idle it blanks again automatically (typed text kept; configurable via `-IdleBlankSeconds` from 5 to 600 s).
 
-### 密码与授权码
+### Password & authorization code
 
-- 解锁密码与授权码都只保存 **PBKDF2-SHA1（12 万次迭代 + 随机盐）** 的哈希，不存明文。
-- **授权码**是忘记解锁密码时唯一的凭据，安装时定版、之后不可更改；
-  `Ctrl+Shift+Alt+E` 用授权码换一个新的解锁密码，改完仍保持锁屏。
-- 输入框禁用中文输入法，只收半角字符（英文/数字/符号），避免设了打不出来的密码。
-- 密码连错会进入递增冷却（最多 30 秒）。
+- Both the unlock password and the authorization code are stored only as **PBKDF2-SHA1 hashes (120,000 iterations + random salt)** — never in plaintext.
+- The **authorization code** is the only fallback if you forget the unlock password; it is frozen at install time and cannot be changed afterwards. `Ctrl+Shift+Alt+E` uses the authorization code to set a new unlock password; the screen stays locked afterwards.
+- Input boxes disable the IME; only ASCII characters (letters/digits/symbols) are accepted, so you never end up with a password you cannot type.
+- Repeated wrong unlock passwords trigger escalating cooldowns (up to 30 seconds).
 
-### 连错封禁（惩罚机制）
+### Lockout (penalty mechanism)
 
-- **解锁密码连错 8 次**：直接禁止继续输入，卡片底部显示「已禁止输入密码」+
-  「请使用物理按键关机，或使用 Ctrl+Alt+Del 呼出安全界面关机」。
-- **输错授权码不给任何提示** —— 不确认"猜错了"，也不透露还剩几次机会，避免被当成试错通道。
-- **授权码连错 3 次**：除红色警告外，禁用对话框内全部输入（输入框与确定按钮置灰，只留退出），
-  并给出同样的关机提示。
-- 两种力度：
-  - `Ctrl+Shift+Alt+E` 的「修改解锁密码」—— 封禁只在本次运行期间持续；
-  - 配置被动过时的「配置需要重建」—— **永久封禁**，写进注册表与 `%APPDATA%` 各一份，
-    关掉重开、重启电脑都不解除，只有重新安装才能清掉。
-- 两种情况都会提示：若确信没记错，就要考虑是否遭遇有预谋的攻击。
+- **8 wrong unlock passwords in a row**: further input is disabled; the bottom of the card shows "Password entry is disabled" plus "Power off using the physical power button, or press Ctrl+Alt+Del and shut down from the security screen".
+- **A wrong authorization code produces no feedback at all** — it does not confirm that the guess was wrong, and it does not reveal how many attempts are left, so the dialog cannot be used as an oracle.
+- **3 wrong authorization codes in a row**: in addition to a red warning, all input inside the dialog is disabled (input boxes and the confirm button greyed out, only Quit left), along with the same shutdown prompt.
+- Two levels of severity:
+  - "Change unlock password" via `Ctrl+Shift+Alt+E` — the lockout lasts only for the current run;
+  - "Configuration needs to be rebuilt" (tampered config) — **permanent lockout**, written to both the registry and `%APPDATA%`; it survives closing the program and rebooting; only reinstalling clears it.
+- Both cases advise you: if you are sure you did not misremember, consider whether you are facing a deliberate attack.
 
-### 配置完整性
+### Config integrity
 
-- 配置文件 `.cascreenguard.config.json` 是隐藏文件，内部带一段 **HMAC-SHA256 摘要**；
-  摘要密钥不在配置里，而是分开存两处「外部凭证」：注册表 `HKCU\Software\CAScreenGuard`
-  与 `%APPDATA%\CAScreenGuard\store.json`。
-- 配置被**删除**或**改动哪怕一个字节** → 下次启动判定为 `deleted` / `modified`，
-  **拒绝开锁**，弹「配置需要重建」的窗口，要求先用授权码确认身份、再设新的解锁密码。
-- 外部凭证缺失 → 判定 `unprovable`，同样拒绝开锁并提示重新安装。
-- 这套机制也堵死了「删掉配置文件把密码顶掉」这条捷径。
+- The config file `.cascreenguard.config.json` is hidden and carries an **HMAC-SHA256 digest** internally. The digest key is not stored in the config; it lives separately in two "external credentials": the registry key `HKCU\Software\CAScreenGuard` and `%APPDATA%\CAScreenGuard\store.json`.
+- Config **deleted** or **modified by even one byte** → next launch classifies it as `deleted` / `modified`, **refuses to lock**, and shows the "Configuration needs to be rebuilt" dialog, requiring the authorization code to confirm identity before setting a new unlock password.
+- External credentials missing → classified as `unprovable`, also refuses to lock and prompts you to reinstall.
+- This also closes the "delete the config file to reset the password" shortcut.
 
-### 关机 / 崩溃监测
+### Unexpected shutdown / crash detection
 
-- 锁屏开始时写标记文件 `%LOCALAPPDATA%\CAScreenGuard\state\running.flag`，正常退出时删除。
-- 下次启动若发现标记还在，说明上次没有正常结束，会分两种情况提示：
-  - **有崩溃日志** → 软件自身出错，给出日志路径，请连同复现步骤反馈；
-  - **没有崩溃日志** → 不是崩溃：可能是有人按了电源键、用 `Ctrl+Alt+Del` 注销/关机，
-    或者直接结束了进程 —— 会提示立即修改电脑密码、运行杀毒软件、检查物理环境安全。
-- 崩溃日志写在 `%LOCALAPPDATA%\CAScreenGuard\state\crash-*.log`（含异常类型、调用栈、PS/OS 版本），
-  自动只保留最近 10 份。
+- On entering lock, a flag file `%LOCALAPPDATA%\CAScreenGuard\running.flag` is written; it is deleted on a clean exit.
+- If the next start finds the flag still present, the previous session did not end cleanly, and it tells you which of two things happened:
+  - **a crash log exists** → the software itself failed; the log path is shown so you can report it with reproduction steps;
+  - **no crash log** → it was not a crash: someone may have pressed the power button, signed out or shut down via `Ctrl+Alt+Del`, or simply killed the process — you are advised to change your Windows password, run an antivirus scan, and check the physical safety of your workspace.
+- Crash logs are written to `%LOCALAPPDATA%\CAScreenGuard\crash-*.log` (including exception type, stack trace, PS/OS versions); only the 10 most recent are kept automatically.
 
-### 睡眠与休眠
+### Sleep & hibernate
 
-- 锁屏期间挂 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`，
-  拦住「闲着没人动、系统自己睡过去 / 休眠」；**故意不带** `ES_DISPLAY_REQUIRED`，否则会和关屏打架。
-- 不拦「用户主动让它睡」（开始菜单→睡眠、电源键、合盖），也不修改你的电源方案。
+- While locked, the script holds `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`, which blocks idle-triggered sleep / hibernate. It **deliberately omits** `ES_DISPLAY_REQUIRED`, which would fight the blanking.
+- It does not block you from explicitly choosing Sleep (Start menu → Sleep, power button, lid close), and it does not touch your power plan.
 
-### 安装器
+### Installer
 
-- 单文件 `CAScreenGuard-Setup.exe`：无控制台窗口、带程序图标、**全中文/英文双语**。
-- **欢迎页**：程序图标、欢迎标题、作者与许可信息、程序简介、杀毒软件提示、
-  说明文档入口、**界面语言选择**（简体中文 / English，切换即重开向导）；点「下一步」才进入安装页。
-- 安装页：安装位置（含「会装到…」实时预览与「浏览…」）、解锁密码、授权码、授权码提示、快捷键，
-  并在界面上写明填写要求（位数、字符集、区分大小写）。
-  下方另有一条**琥珀色卸载提示**：只使用本程序提供的卸载程序，不要用第三方管理程序卸载。
-- 点「安装」后状态行立刻转绿提示「安装可能需要 3~10 秒，请耐心等待，不要关闭这个窗口」，
-  避免用户以为卡死而强杀进程；出错时同一行转红显示原因。
-- 实际安装在 `你选的位置\CAScreenGuard-当天日期\` 这个专属子文件夹里：
-  同名文件夹已存在则**拒绝安装**；本机已装过则**覆盖重装**（先删掉上一套再装新的）。
-- 自动创建桌面快捷方式（图标 + **全局快捷键** `Ctrl+Alt+<字母/数字>`，
-  写进快捷方式自带的「快捷键」字段 —— 不需要常驻进程、不需要开机自启）。
-- 注册到「应用和功能」（开发者 `Conste11ation117`），卸载时删除注册表、外部凭证、
-  桌面快捷方式**以及整个安装文件夹**（连安装时创建的父文件夹也一起收走）。
-- 安装时选定的界面语言会写进外部凭证，装好的程序**在中文系统上也会按它显示英文**。
+- Single-file `CAScreenGuard-Setup.exe`: no console window, app icon included, **fully bilingual (Chinese/English)**.
+- **Welcome page**: app icon, welcome title, author and license info, short introduction, antivirus note, link to the docs, **interface language selector** (简体中文 / English — switching restarts the wizard); "Next" takes you to the install page.
+- Install page: install location (with a live "will install to …" preview and a "Browse…" button), unlock password, authorization code, authorization hint, hotkey; input requirements (length, character set, case sensitivity) are stated on the page. Below is an **amber uninstall notice**: use only the uninstaller provided by this program; do not use third-party management tools to uninstall.
+- After clicking "Install", the status line immediately turns green: "Installation may take 3–10 seconds. Please wait and do not close this window." — so users do not assume it is frozen and force-kill the process; on error the same line turns red with the reason.
+- It installs into a dedicated sub-folder `<where you chose>\CAScreenGuard-<date>\`: if that sub-folder already exists, installation is **refused**; if already installed, it **reinstalls in place** (the previous copy is removed first).
+- Automatically creates a desktop shortcut (icon + **global hotkey** `Ctrl+Alt+<letter/digit>`, stored in the shortcut's own "Shortcut key" field — no background process, no autostart entry).
+- Registers in "Apps & features" (publisher `Conste11ation117`); uninstalling removes the registry keys, external credentials, desktop shortcut, **and the whole installation folder** (including the parent folder created at install time).
+- The language chosen at install time is written into the external credentials; the installed program **displays in English even on a Chinese Windows system**.
 
-### 双语与版本号
+### Bilingual UI & version number
 
-- 主程序与安装器都内置中英两套界面文案；语言优先级：命令行 `-Lang` > 安装时选的 > 系统显示语言。
-- 所有弹出窗口标题都带版本号，例如 `CAScreenGuard V1.0.0 · 配置需要重建`。
+- Both the main program and the installer ship with Chinese and English UI text built in. Language priority: command-line `-Lang` > chosen at install time > system display language.
+- All popup window titles include the version number, e.g. `CAScreenGuard V1.0.0 · Configuration needs to be rebuilt`.
 
-### 图标
+### Icon
 
-- 参考 JetBrains 产品图标的构图：两张倾斜的彩色圆角方块（青蓝 + 紫）叠加，
-  中间压一个黑色方块，内含两个大字母 **SG** 与产品名 **CAScreenGuard**（JetBrains Mono，天蓝色），
-  右侧指定矩形区域内一把灰色**钥匙**（朝上）。
-- 128/256 显示完整设计；更小尺寸用白色短横线代替产品名，避免糊成一团。
-- 由 `make-icon.ps1` 生成，一次输出 16/24/32/48/64/128/256 七种尺寸。
+- Inspired by JetBrains product icon composition: two tilted, rounded-corner colored squares (cyan-blue + purple) overlaid, with a black square pressed in the center containing the two large letters **SG** and the product name **CAScreenGuard** (JetBrains Mono, sky blue), plus a grey **key** (pointing up) inside a designated rectangular area on the right.
+- At 128/256 px the full design is shown; at smaller sizes the product name is replaced by short white dashes to avoid blurring into a mess.
+- Generated by `make-icon.ps1`, outputting seven sizes in one go: 16/24/32/48/64/128/256.
 
-### 构建与自检
+### Build & self-test
 
-- `build-setup.ps1` 一条命令完成：用 PowerShell **语法树**去掉主脚本注释与空行 →
-  去掉两个 C# 源文件的注释**并先编译验证** → 把四份文件嵌进安装器 → 编译成单文件 exe。
-- 构建前自动归一化 BOM 与行尾（避免编辑工具吃掉 BOM 导致中文乱码）。
-- `CAScreenGuard.ps1 -SelfTest` 提供 8 项自检：配置文件读写、错误密码不接受、
-  完整性判定（正常/被改/被删）、遮罩尺寸、界面构建、空闲计时接口、错误密码处理、正确密码解锁。
+- `build-setup.ps1` does it all in one command: strips comments and blank lines from the main script using the PowerShell **syntax tree** → strips comments from both C# source files **and compiles them first to verify nothing broke** → embeds the four files into the installer → compiles a single-file exe.
+- Before building, BOM and line endings are automatically normalised (to avoid editors eating the BOM and turning Chinese text into mojibake).
+- `CAScreenGuard.ps1 -SelfTest` runs 8 checks: config read/write, wrong password rejected, integrity verdicts (ok / modified / deleted), mask size, UI construction, idle-time API, wrong-password handling, successful unlock.
 
-### 命令行参数
+### Command-line parameters
 
-| 参数 | 说明 |
+| Parameter | Meaning |
 |---|---|
-| `-ResetPassword` | 直接打开「修改解锁密码」（需授权码；这一次不熄屏） |
-| `-IdleBlankSeconds <5..600>` | 无人操作多久自动再次熄屏，默认 25 秒 |
-| `-Lang auto\|zh\|en` | 强制界面语言 |
-| `-SelfTest` | 自检，不改动显示器电源 |
+| `-ResetPassword` | Open "Change unlock password" right away (needs the authorization code; skips blanking this time) |
+| `-IdleBlankSeconds <5..600>` | Idle timeout before blanking again, default 25 seconds |
+| `-Lang auto\|zh\|en` | Force the UI language |
+| `-SelfTest` | Self-test, does not blank the screen |
 
-### 边界说明（重要）
+### Known limits (important)
 
-- 它是**视觉屏障**，不是安全边界：不加密磁盘、不隐藏运行中的程序、不阻止网络访问。
-- `Ctrl+Alt+Del` 是系统的安全注意序列，任何用户态程序都拦不住。
-- 能改程序的人就能绕过它（换掉脚本、或直接结束进程）；提权只能挡住「非提权进程杀不掉它」这一条，
-  代价是每次启动弹 UAC、杀软敏感度上升、攻击面变大 —— 对「防路过的人随手翻看」这个目标并不划算。
-- 已知不会拦：用户主动睡眠、合盖（若电源设置里合盖是睡眠）、`Ctrl+Alt+Del` 之后的关机操作。
+- It is a **visual barrier**, not a security boundary: it does not encrypt the disk, does not hide running programs, and does not block network access.
+- `Ctrl+Alt+Del` is the system's Secure Attention Sequence; no user-mode program can intercept it.
+- Anyone who can modify the program can bypass it (swap the script, or just kill the process); elevating privileges would only block "a non-elevated process cannot kill it" — at the cost of a UAC prompt every launch, higher antivirus sensitivity, and a larger attack surface — which is not worth it for the goal of "stopping a passer-by from glancing at your screen".
+- Known not to block: user-initiated Sleep, lid close (if lid close is set to Sleep in power settings), and shutdown after `Ctrl+Alt+Del`.
 
 [1.0.0]: https://github.com/Conste11ation117/CAScreenGuard/releases/tag/v1.0.0

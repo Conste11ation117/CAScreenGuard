@@ -1,6 +1,14 @@
-# CAScreenGuard
+﻿# CAScreenGuard
 
 **English** · [简体中文](README.zh-CN.md)
+
+# From the author: what does this software do?
+
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any undetectable peeking, theft, or tampering.**
+
+*How was this built?*
+
+*Co-developed with DeepSeek v4.1 flash, Kimi Code, and DeepSeek Harness.*
 
 A tiny Windows tool that keeps an eye on your screen while you are away: it turns the monitor off
 (**only the monitor** — no sleep, no session lock, the machine stays awake), covers everything with a
@@ -22,9 +30,13 @@ written to disk, so reopening the program will not lift it.*
 **How to get it:** `git clone` this repository, or grab `CAScreenGuard-Setup.exe` from
 [Releases](https://github.com/Conste11ation117/CAScreenGuard/releases) (the file in the repo is the same one).
 Double-click the wizard and you are done in about two minutes. The release also ships
-`CAScreenGuard-1.0-all.zip` — the same package, for copying to a machine offline.
+`CAScreenGuard-v1.0.0-all.zip` — the same package, for copying to a machine offline.
 
 ---
+
+## 0. Meta-positioning
+
+**Keep long-running workflows going while the PC is unattended, and protect your ongoing work and private files from any undetectable peeking, theft, or tampering.**
 
 ## 1. What it is good for — and what it is not
 
@@ -104,12 +116,12 @@ password literal.
 
 ## 4. Unexpected shutdown / crash detection
 
-- Entering the lock writes a flag file `%LOCALAPPDATA%\CAScreenGuard\state\running.flag`; a clean unlock
+- Entering the lock writes a flag file `%LOCALAPPDATA%\CAScreenGuard\running.flag`; a clean unlock
   deletes it.
 - If the next start finds the flag still there, the previous session did not end cleanly, and it tells
   you which of two things happened:
   - **a crash log exists** → the software itself failed; the log path is shown so you can report it
-    (with reproduction steps). Logs live in `%LOCALAPPDATA%\CAScreenGuard\state\crash-*.log`, newest 10 kept;
+    (with reproduction steps). Logs live in `%LOCALAPPDATA%\CAScreenGuard\crash-*.log`, newest 10 kept;
   - **no crash log** → it did not crash: someone may have pressed the power button, signed out or shut
     down via `Ctrl+Alt+Del`, or simply killed the process. You are advised to change your Windows
     password, run a virus scan, check the physical safety of your workspace, and reinstall.
@@ -211,7 +223,8 @@ mask size, UI construction, idle-time API, wrong-password handling, successful u
 | `-ResetPassword` | Open "Change unlock password" right away (needs the authorization code; skips blanking) |
 | `-IdleBlankSeconds <5..600>` | Idle timeout before blanking again, default 25 |
 | `-Lang auto\|zh\|en` | Force the UI language |
-| `-SelfTest` | Self-test, does not touch monitor power |
+| `-Ver` | Print the version and author, then exit (nothing is blanked) |
+| `-SelfTest` | Self-test, does not blank the screen |
 
 ---
 

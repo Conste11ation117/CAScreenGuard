@@ -1984,7 +1984,7 @@ $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
 $titleY = 34
 $handSize = 34
-$handGap = 7
+$handGap = 4
 $groupX = [int](($cardW - ($handSize + $handGap + $titleW)) / 2)
 
 $title = New-Object System.Windows.Forms.Label

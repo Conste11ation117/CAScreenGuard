@@ -81,6 +81,7 @@ public static class Str
         { "k65", "查看说明文档（README）" },
         { "k66", "界面语言" },
         { "k67", "下一步" },
+        { "k95", "（程序文件与注册表都已备份；双击 registry-backup.reg 即可还原注册表）" },
         { "k80", "检测到本机已安装 " },
         { "k81", "\n\n升级只替换程序文件：解锁密码、授权码、提示、快捷键、桌面快捷方式全部保留。继续吗？" },
         { "k83", "注册表里有安装登记，但没有记下安装目录，无法安全升级。" },
@@ -175,6 +176,7 @@ public static class Str
         { "k65", "Open the README" },
         { "k66", "Language" },
         { "k67", "Next" },
+        { "k95", " (program files and registry both backed up; double-click registry-backup.reg to restore the registry)" },
         { "k80", "An existing install was found: " },
         { "k81", "\n\nUpgrading replaces the program files only: the unlock password, authorization code, hint, hotkey and desktop shortcut all stay. Continue?" },
         { "k83", "There is an install registration, but no install folder recorded, so it cannot be upgraded safely." },
@@ -515,6 +517,7 @@ public class CAScreenGuardInstaller
         try
         {
             Directory.CreateDirectory(backup);
+            try { WriteRegistryBackup(backup); } catch { }   // 先存注册表，再存文件
             foreach (string leaf in new string[] { ScriptLeaf, IconLeaf, EarlyLeaf, NativeLeaf, LicenseLeaf, "uninstall.exe" })
             {
                 string src = Path.Combine(dir, leaf);
@@ -547,9 +550,43 @@ public class CAScreenGuardInstaller
         }
         catch { }
 
-        return Str.S("k89") + AppVersion + Str.S("k90") + dir + "\n" + backup + "\n\n" + backupNote + Str.S("k91");
+        return Str.S("k89") + AppVersion + Str.S("k90") + dir + "\n" + backup + Str.S("k95") + "\n\n" + backupNote + Str.S("k91");
     }
 
+    // 把两棵注册表键导成标准 .reg：双击即可还原。Token/AuthHash/AuthSalt/MarkerKey 这些
+    // 凭证全在注册表里，只备份程序文件是不够的 —— 升级前必须留一份。
+    static void WriteRegistryBackup(string dir)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("Windows Registry Editor Version 5.00");
+        AppendRegKey(sb, StoreKey);
+        AppendRegKey(sb, UninstallKey);
+        File.WriteAllText(Path.Combine(dir, "registry-backup.reg"), sb.ToString(), new UnicodeEncoding(false, true));
+    }
+
+    static void AppendRegKey(StringBuilder sb, string path)
+    {
+        sb.AppendLine();
+        sb.AppendLine("[HKEY_CURRENT_USER\\" + path + "]");
+        using (RegistryKey k = Registry.CurrentUser.OpenSubKey(path))
+        {
+            if (k == null) { return; }
+            foreach (string name in k.GetValueNames())
+            {
+                if (string.IsNullOrEmpty(name)) { continue; }
+                object v = k.GetValue(name);
+                if (k.GetValueKind(name) == RegistryValueKind.DWord)
+                {
+                    sb.AppendLine("\"" + name + "\"=dword:" + Convert.ToInt64(v).ToString("x8"));
+                }
+                else
+                {
+                    string s = (v == null) ? "" : v.ToString();
+                    sb.AppendLine("\"" + name + "\"=" + "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"");
+                }
+            }
+        }
+    }
     static void WritePayloadAtomic(string dir, string leaf, string payloadB64)
     {
         string target = Path.Combine(dir, leaf);

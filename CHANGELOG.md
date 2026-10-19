@@ -12,14 +12,32 @@ and versioning adheres to [Semantic Versioning](https://semver.org/).
   the left of the title. To its right is the product name set in JetBrains Mono, pre-rendered to a PNG and
   embedded in the script: nothing has to be installed on the user's machine, and no font work happens at
   paint time (`make-wordmark.ps1` regenerates the asset).
-- **Battery and network in the bottom-right corner, Windows-lock-screen style**: one rounded, translucent
-  plate holding a network icon (Wi-Fi / wired / no link) and the battery — icon plus percentage, a charging
-  bolt that flips to a dark cut-out on a full white fill, and a red fill at 15% or below. Network status is
-  only "up or not, and wired or wireless" — the Wi-Fi name and signal strength are deliberately not read.
-  Both are refreshed every 10 seconds, not on every 250 ms tick.
-- **A hand mark for privacy, back at the card title's left.** Drawn as vectors (palm, four fingers, thumb)
-  in white — a generic open-hand pictogram, not a copy of any icon set's artwork.
+- **Battery, network and Wi-Fi strength in the bottom-right corner, Windows-lock-screen style**: one
+  rounded, translucent plate holding a network icon and the battery — icon plus percentage, a charging
+  bolt that flips to a dark cut-out on a full white fill, and a red fill at 15% or below. The network icon
+  is a globe when the link is wired, a slashed globe when nothing is up, and Wi-Fi arcs while on Wi-Fi,
+  with one, two or three segments lit according to the signal. Signal strength comes from
+  `netsh wlan show interfaces` every 30 seconds; the Wi-Fi name itself is deliberately never read.
+  Everything is refreshed every 10 seconds, not on every 250 ms tick.
+- **A hand mark for privacy, back at the card title's left** — the Unicode raised hand (U+270B) drawn
+  in the system symbol font, in white, so it stays crisp at any DPI and needs no extra font installed.
 - The card title now sits centred together with that hand mark.
+- **The sound cue on a successful unlock is gone.** The error and warning cues stay — they are feedback
+  for a mistake, which is worth hearing.
+
+### Setup
+
+- **In-place upgrade.** Running a newer installer on a machine that already has CAScreenGuard asks once,
+  then replaces the program files in the existing folder. The unlock password, authorization code, hint,
+  hotkey, desktop shortcut and both credential stores are left exactly as they are; the configuration
+  file is not written at all.
+- **Everything is backed up first.** The old program files and both registry keys — as a standard `.reg`
+  you can double-click to restore — go into `backup-<timestamp>\` inside the install folder.
+- The upgrade refuses, with a reason and without touching anything, when the install folder is missing or
+  unrecognised, the configuration file is gone, or CAScreenGuard is still running.
+- The welcome page now points at the releases page for new versions.
+- Installs record their version (`HKCU\Software\CAScreenGuard\Version`), which is what the next upgrade
+  compares against.
 
 ## [2.0.0] — 2026-10-16 Eclipse
 

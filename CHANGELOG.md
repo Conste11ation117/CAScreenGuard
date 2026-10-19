@@ -1,8 +1,21 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
+
+## [2.1.0] — 2026-10-19
+
+### New look
+
+- **The brand mark moved to the bottom-left corner of the screen** — it used to sit inside the card, to
+  the left of the title. To its right is the product name set in JetBrains Mono, pre-rendered to a PNG and
+  embedded in the script: nothing has to be installed on the user's machine, and no font work happens at
+  paint time (`make-wordmark.ps1` regenerates the asset).
+- **Battery in the bottom-right corner, Windows-lock-screen style**: icon plus percentage sitting on a
+  rounded, translucent plate; a small amber bolt while charging, and a red fill at 15% or below. The whole
+  block is skipped on machines with no battery. It is read every 10 seconds, not on every 250 ms tick.
+- The card title is now centred on its own, since the mark no longer shares that row.
 
 ## [2.0.0] — 2026-10-16 Eclipse
 

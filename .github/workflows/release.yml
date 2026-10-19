@@ -23,7 +23,7 @@ jobs:
         run: |
           set -e
           # All：整份工程（源码、安装器、文档、截图）—— 与本地 CAScreenGuard-All\ 一致
-          FILES=".gitattributes .gitignore AGENTS.md build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CHANGELOG.md CHANGELOG.zh-CN.md Installer.cs LICENSE make-icon.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png docs/lock-screen.en.jpg docs/lock-screen.zh-CN.jpg"
+          FILES=".gitattributes .gitignore AGENTS.md build-setup.ps1 CAScreenGuard-demo.ps1 CAScreenGuard-Setup.exe CAScreenGuard.ico CAScreenGuard.ps1 CAScreenGuard-wordmark.png CHANGELOG.md CHANGELOG.zh-CN.md Installer.cs LICENSE make-icon.ps1 make-wordmark.ps1 README.md README.zh-CN.md ScreenLockEarly.cs ScreenLockNative.cs SECURITY.md docs/rebuild-dialog.en.png docs/rebuild-dialog.zh-CN.png docs/lock-screen.en.jpg docs/lock-screen.zh-CN.jpg"
           # 清单是手写的，很容易漏：漏了就在这里失败，别偷偷少发东西
           # 注意：.github/ 下的东西本来就不进包，要先按 $f 判断跳过；
           # 之前把这一支写在 case "$FILES" 里，匹配对象错了，永远不成立 → 每次发版必失败

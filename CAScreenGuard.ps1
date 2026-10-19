@@ -22,13 +22,131 @@ $ErrorActionPreference = 'Stop'
 
 
 
-$script:AppVersion = 'V2.0.0'
+$script:AppVersion = 'V2.1.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
     Write-Host '许可 / License: MIT'
     exit 0
 }
+
+
+
+
+$script:WordmarkB64 = @'
+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
+Eh88AAAAAElFTkSuQmCC
+'@
+$script:WordmarkB64 = $script:WordmarkB64 -replace '\s', ''
+
+$script:WordmarkImg = $null
+$script:PowerInfo = $null
+$script:LastPowerRead = [datetime]::MinValue
 
 
 
@@ -1821,10 +1939,8 @@ $titleText = (T 'k54')
 $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
 
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
-$logoSize = 32
-$logoGap = 12
 $titleY = 34
-$groupX = [int](($cardW - ($logoSize + $logoGap + $titleW)) / 2)
+$groupX = [int](($cardW - $titleW) / 2)
 
 $title = New-Object System.Windows.Forms.Label
 $title.AutoSize = $false
@@ -1832,37 +1948,8 @@ $title.Text = $titleText
 $title.Font = $titleFont
 $title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-$title.SetBounds($groupX + $logoSize + $logoGap, $titleY, $titleW + 8, 44)
+$title.SetBounds($groupX, $titleY, $titleW + 8, 44)
 $card.Controls.Add($title)
-
-
-
-$logoMark = New-Object System.Windows.Forms.Panel
-$logoMark.SetBounds($groupX, $titleY + [int]((44 - $logoSize) / 2), $logoSize, $logoSize)
-$logoMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)   
-$logoMark.Add_Paint({
-        param($sender, $e)
-        try {
-            $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-            $f = [float]$sender.Width
-            $side = $f * 0.62
-            $radius = $f * 0.16
-            $layers = @(
-                @{ cx = 0.40 * $f; cy = 0.40 * $f; color = [System.Drawing.Color]::FromArgb(47, 168, 248) },
-                @{ cx = 0.60 * $f; cy = 0.60 * $f; color = [System.Drawing.Color]::FromArgb(124, 77, 255) })
-            foreach ($layer in $layers) {
-                $path = New-RoundedPath (-$side / 2) (-$side / 2) $side $side $radius
-                $mtx = New-Object System.Drawing.Drawing2D.Matrix
-                $mtx.RotateAt(-10, (New-Object System.Drawing.PointF(0, 0)))
-                $mtx.Translate([float]$layer.cx, [float]$layer.cy)
-                $path.Transform($mtx)
-                $brush = New-Object System.Drawing.SolidBrush $layer.color
-                $e.Graphics.FillPath($brush, $path)
-                $brush.Dispose(); $path.Dispose(); $mtx.Dispose()
-            }
-        } catch { }
-    })
-$card.Controls.Add($logoMark)
 
 $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.AutoSize = $false
@@ -1956,6 +2043,36 @@ $script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(150, 156, 164)
 $script:ClockDate.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:Form.Controls.Add($script:ClockDate)
 
+function Update-PowerInfo {
+    
+    
+    
+    try {
+        $ps = [System.Windows.Forms.SystemInformation]::PowerStatus
+        if ($null -eq $ps) { return }
+        $flags = $ps.BatteryChargeStatus
+        if (($flags -band [System.Windows.Forms.BatteryChargeStatus]::NoSystemBattery) -ne 0) {
+            if ($null -ne $script:PowerInfo) {
+                $script:PowerInfo = $null
+                try { $script:Form.Invalidate() } catch { }
+            }
+            return
+        }
+        $percent = -1
+        $raw = [double]$ps.BatteryLifePercent
+        if (($raw -ge 0) -and ($raw -le 1)) { $percent = [int][math]::Round($raw * 100) }
+        $charging = (($flags -band [System.Windows.Forms.BatteryChargeStatus]::Charging) -ne 0)
+        $changed = $true
+        if ($null -ne $script:PowerInfo) {
+            $changed = (($script:PowerInfo.Percent -ne $percent) -or ($script:PowerInfo.Charging -ne $charging))
+        }
+        if ($changed) {
+            $script:PowerInfo = [pscustomobject]@{ Percent = $percent; Charging = $charging }
+            try { $script:Form.Invalidate() } catch { }
+        }
+    } catch { }
+}
+
 function Update-Clock {
     
     try {
@@ -1969,6 +2086,11 @@ function Update-Clock {
             $dateText = $now.ToString('dddd, MMM d', [System.Globalization.CultureInfo]::GetCultureInfo('en-US'))
         }
         if ($script:ClockDate.Text -ne $dateText) { $script:ClockDate.Text = $dateText }
+        
+        if (((Get-Date) - $script:LastPowerRead).TotalSeconds -ge 10) {
+            $script:LastPowerRead = Get-Date
+            Update-PowerInfo
+        }
     } catch { }
 }
 Update-Clock
@@ -2039,6 +2161,164 @@ $cardPath.Dispose()
 $boxPath = New-RoundedPath 0 0 $box.Width $box.Height ([int]($box.Height / 2))
 $box.Region = New-Object System.Drawing.Region($boxPath)
 $boxPath.Dispose()
+
+
+
+
+
+$edgeX = [int](48 * $script:Scale)          
+$edgeY = [int](40 * $script:Scale)          
+$barH = [int](40 * $script:Scale)           
+$script:MarkSize = [int](30 * $script:Scale)
+$script:MarkGap = [int](13 * $script:Scale)
+
+
+try {
+    $wmBytes = [Convert]::FromBase64String($script:WordmarkB64)
+    $script:WordmarkImg = [System.Drawing.Image]::FromStream((New-Object System.IO.MemoryStream(,$wmBytes)))
+} catch { $script:WordmarkImg = $null }
+$script:WmH = [int]($barH * 0.42)
+$script:WmW = 0
+if (($null -ne $script:WordmarkImg) -and ($script:WordmarkImg.Height -gt 0)) {
+    $script:WmW = [int]($script:WmH * ($script:WordmarkImg.Width / $script:WordmarkImg.Height))
+}
+
+
+$script:PowerPt = 11.5
+$script:PowerIconH = [int](15 * $script:Scale)
+$script:PowerGap = [int](9 * $script:Scale)
+$powFontTmp = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
+$script:PowerTextW = [int]([System.Windows.Forms.TextRenderer]::MeasureText('100%', $powFontTmp).Width)
+$powFontTmp.Dispose()
+
+$script:EdgeX = $edgeX
+$script:EdgeY = $edgeY
+$script:BarH = $barH
+
+$script:Form.Add_Paint({
+        param($sender, $e)
+        try {
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            $ink = [System.Drawing.Color]::FromArgb(236, 240, 245)
+            $bottom = [float]($sender.ClientSize.Height - $script:EdgeY - $script:BarH)
+
+            
+            $f = [float]$script:MarkSize
+            $top = $bottom + ($script:BarH - $f) / 2
+            $side = $f * 0.62
+            $radius = $f * 0.16
+            
+            
+            $markX = [float]($script:EdgeX)
+            $layers = @(
+                @{ ox = $f * 0.40; oy = $f * 0.40; color = [System.Drawing.Color]::FromArgb(47, 168, 248) },
+                @{ ox = $f * 0.60; oy = $f * 0.60; color = [System.Drawing.Color]::FromArgb(124, 77, 255) })
+            foreach ($layer in $layers) {
+                $g.ResetTransform()
+                $g.TranslateTransform(($markX + $layer.ox), ($top + $layer.oy))
+                $g.RotateTransform(-10)
+                $path = New-RoundedPath (-$side / 2) (-$side / 2) $side $side $radius
+                $brush = New-Object System.Drawing.SolidBrush $layer.color
+                $g.FillPath($brush, $path)
+                $brush.Dispose(); $path.Dispose()
+            }
+            $g.ResetTransform()
+            if (($null -ne $script:WordmarkImg) -and ($script:WmW -gt 0)) {
+                $rect = New-Object System.Drawing.RectangleF(
+                    [float]($script:EdgeX + $script:MarkSize + $script:MarkGap),
+                    [float]($bottom + ($script:BarH - $script:WmH) / 2),
+                    [float]$script:WmW, [float]$script:WmH)
+                $g.DrawImage($script:WordmarkImg, $rect)
+            }
+
+            
+            $info = $script:PowerInfo
+            if ($null -ne $info) {
+                $h = [float]$script:PowerIconH
+                $bw = [float]($h * 1.9)               
+                $nub = [float]($h * 0.16)
+                $bodyW = [float]($bw - $nub)
+                $r = [float]($h * 0.24)
+                $penW = [float][math]::Max(1.2, $script:Scale * 0.9)
+                
+                
+                $padX = [float](14 * $script:Scale)
+                $padY = [float](6 * $script:Scale)
+                $pillW = [float]($bw + $script:PowerGap + $script:PowerTextW + $padX * 2)
+                $pillH = [float]($h + $padY * 2)
+                $pillX = [float]($sender.ClientSize.Width - $script:EdgeX - $pillW)
+                $pillY = [float]($bottom + ($script:BarH - $pillH) / 2)
+                
+                $pillR = [float][math]::Min($pillH / 2, 10 * $script:Scale)
+                $pill = New-RoundedPath $pillX $pillY $pillW $pillH $pillR
+                $plate = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(44, 24, 26, 30))
+                $g.FillPath($plate, $pill)
+                $plate.Dispose()
+                $ring = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(40, 236, 240, 245)), ([float][math]::Max(1, $script:Scale * 0.8))
+                $g.DrawPath($ring, $pill)
+                $ring.Dispose()
+                $pill.Dispose()
+                $x = [float]($pillX + $padX)
+                $y = [float]($pillY + $padY)
+                $pen = New-Object System.Drawing.Pen $ink, $penW
+                $body = New-RoundedPath $x $y $bodyW $h $r
+                $g.DrawPath($pen, $body)
+                $body.Dispose(); $pen.Dispose()
+                $nb = New-RoundedPath ($x + $bodyW - 1) ($y + ($h - $h * 0.44) / 2) ($nub + 1) ($h * 0.44) ([float]($h * 0.12))
+                $g.FillPath((New-Object System.Drawing.SolidBrush $ink), $nb)
+                $nb.Dispose()
+                if ($info.Percent -ge 0) {
+                    $innerW = [float]($bodyW - $penW * 3)
+                    $innerH = [float]($h - $penW * 3)
+                    $fillW = [float]($innerW * ($info.Percent / 100.0))
+                    if ($fillW -ge 1) {
+                        $fc = $ink
+                        if ($info.Percent -le 15) { $fc = [System.Drawing.Color]::FromArgb(240, 96, 96) }
+                        $fill = New-RoundedPath ($x + $penW * 1.5) ($y + $penW * 1.5) $fillW $innerH ([float][math]::Max(1.0, $innerH * 0.25))
+                        $g.FillPath((New-Object System.Drawing.SolidBrush $fc), $fill)
+                        $fill.Dispose()
+                    }
+                }
+                if ($info.Charging) {
+                    
+                    
+                    $bx = [float]($x + $bodyW / 2)
+                    $by = [float]($y + $h / 2)
+                    $k = [float]($h * 0.34)
+                    $boltColor = [System.Drawing.Color]::FromArgb(255, 214, 102)
+                    if ($info.Percent -ge 0) { $boltColor = [System.Drawing.Color]::FromArgb(18, 20, 24) }
+                    $bolt = [System.Drawing.PointF[]]@(
+                        [System.Drawing.PointF]::new(($bx + $k * 0.10), ($by - $k)),
+                        [System.Drawing.PointF]::new(($bx - $k * 0.42), ($by + $k * 0.08)),
+                        [System.Drawing.PointF]::new(($bx - $k * 0.02), ($by + $k * 0.08)),
+                        [System.Drawing.PointF]::new(($bx - $k * 0.14), ($by + $k)),
+                        [System.Drawing.PointF]::new(($bx + $k * 0.44), ($by - $k * 0.10)),
+                        [System.Drawing.PointF]::new(($bx + $k * 0.02), ($by - $k * 0.10)))
+                    $g.FillPolygon((New-Object System.Drawing.SolidBrush $boltColor), $bolt)
+                }
+                if ($info.Percent -ge 0) {
+                    $font = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
+                    $fmt = New-Object System.Drawing.StringFormat
+                    $fmt.Alignment = [System.Drawing.StringAlignment]::Far
+                    $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+                    
+                    $txtRect = New-Object System.Drawing.RectangleF(
+                        [float]($pillX + $pillW - $padX - $script:PowerTextW),
+                        [float]$pillY, [float]$script:PowerTextW, [float]$pillH)
+                    $g.DrawString(("$($info.Percent)%"), $font, (New-Object System.Drawing.SolidBrush $ink), $txtRect, $fmt)
+                    $fmt.Dispose(); $font.Dispose()
+                }
+            }
+        } catch { }
+    })
+
+$script:LastPowerRead = [datetime]::MinValue
+$script:PowerInfo = $null
+Update-PowerInfo
+
 
 
 $box.Add_Paint({
@@ -2304,6 +2584,7 @@ finally {
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
     try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   
+    try { if ($script:WordmarkImg) { $script:WordmarkImg.Dispose() } } catch { }   
     Restore-SystemState        
     
     try { Write-GuardLog ('退出：存活 ' + [int]((Get-Date) - $script:StartedAt).TotalSeconds + ' 秒') } catch { }

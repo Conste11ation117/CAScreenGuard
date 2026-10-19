@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.1.0] — 2026-10-19
+## [2.2.0] — 2026-10-19
 
 ### New look
 
@@ -12,10 +12,14 @@ and versioning adheres to [Semantic Versioning](https://semver.org/).
   the left of the title. To its right is the product name set in JetBrains Mono, pre-rendered to a PNG and
   embedded in the script: nothing has to be installed on the user's machine, and no font work happens at
   paint time (`make-wordmark.ps1` regenerates the asset).
-- **Battery in the bottom-right corner, Windows-lock-screen style**: icon plus percentage sitting on a
-  rounded, translucent plate; a small amber bolt while charging, and a red fill at 15% or below. The whole
-  block is skipped on machines with no battery. It is read every 10 seconds, not on every 250 ms tick.
-- The card title is now centred on its own, since the mark no longer shares that row.
+- **Battery and network in the bottom-right corner, Windows-lock-screen style**: one rounded, translucent
+  plate holding a network icon (Wi-Fi / wired / no link) and the battery — icon plus percentage, a charging
+  bolt that flips to a dark cut-out on a full white fill, and a red fill at 15% or below. Network status is
+  only "up or not, and wired or wireless" — the Wi-Fi name and signal strength are deliberately not read.
+  Both are refreshed every 10 seconds, not on every 250 ms tick.
+- **A hand mark for privacy, back at the card title's left.** Drawn as vectors (palm, four fingers, thumb)
+  in white — a generic open-hand pictogram, not a copy of any icon set's artwork.
+- The card title now sits centred together with that hand mark.
 
 ## [2.0.0] — 2026-10-16 Eclipse
 

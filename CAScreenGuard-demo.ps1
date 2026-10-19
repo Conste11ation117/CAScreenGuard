@@ -64,7 +64,7 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ 界面语言
 # 显示在所有弹出窗口标题里的版本号
-$script:AppVersion = 'V2.1.0'
+$script:AppVersion = 'V2.2.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -1975,14 +1975,17 @@ $script:Form.Controls.Add($card)
 
 # 壁纸背景不在这一刻画：要等屏幕真的熄下去之后再静默合成（见 Install-WallpaperBackground）
 
-# 标题行：品牌标记已经搬到整个界面的左下角（见下方「左下角 / 右下角」那段），
-# 卡片里只留「息屏保护中」四个字，自己居中。
+# 标题行：左边重新加一个「手掌」标记表示隐私（白色），右边「息屏保护中」，两者作为整体居中。
+# 手掌是自己画的矢量图形：掌心 + 四根手指 + 拇指，全部用圆角矩形拼 —— 只保留"张开的手 = 隐私"
+# 这个通用直觉，不是任何一家图标库那张图的复制，所以不存在侵权问题。
 $titleText = (T 'k54')
 $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
 # MeasureText 量出来的是物理像素，这里要换回布局用的逻辑像素（后面整体还要按 DPI 放大一次）
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
 $titleY = 34
-$groupX = [int](($cardW - $titleW) / 2)
+$handSize = 34
+$handGap = 7
+$groupX = [int](($cardW - ($handSize + $handGap + $titleW)) / 2)
 
 $title = New-Object System.Windows.Forms.Label
 $title.AutoSize = $false
@@ -1990,8 +1993,49 @@ $title.Text = $titleText
 $title.Font = $titleFont
 $title.ForeColor = [System.Drawing.Color]::FromArgb(242, 242, 244)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-$title.SetBounds($groupX, $titleY, $titleW + 8, 44)
+$title.SetBounds($groupX + $handSize + $handGap, $titleY, $titleW + 8, 44)
 $card.Controls.Add($title)
+
+# 手掌标记：单独一个同色小面板（和卡片同底色，等于透明），任何 DPI 下都是矢量级清晰
+$handMark = New-Object System.Windows.Forms.Panel
+$handMark.SetBounds($groupX, $titleY + [int]((44 - $handSize) / 2), $handSize, $handSize)
+$handMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
+$handMark.Add_Paint({
+        param($sender, $e)
+        try {
+            $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $f = [float]$sender.Width
+            $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(242, 242, 244))
+            # 造型参照"举起的手掌"：四指并拢（顶端各留圆角 → 四个浅弧指峰，中指最高）、
+            # 掌心先画且宽度略小于四指跨度（上沿藏在指根后面，所以看不到"腰"）、拇指从左侧斜出。
+            # 全部是圆角矩形拼的通用图形，不是任何图标库那张图的复制。
+            $hand = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $hand.FillMode = [System.Drawing.Drawing2D.FillMode]::Winding
+            $palm = New-RoundedPath ($f * 0.215) ($f * 0.50) ($f * 0.57) ($f * 0.42) ($f * 0.13)
+            $hand.AddPath($palm, $true); $palm.Dispose()
+            $fw = 0.145
+            $leftX = @(0.210, 0.355, 0.500, 0.645)
+            $topY = @(0.055, 0.020, 0.035, 0.090)
+            for ($i = 0; $i -lt 4; $i++) {
+                $fy = $f * $topY[$i]
+                $fh = ($f * 0.62) - $fy
+                $fp = New-RoundedPath ($f * $leftX[$i]) $fy ($f * $fw) $fh ($f * $fw / 2)
+                $hand.AddPath($fp, $true); $fp.Dispose()
+            }
+            $e.Graphics.FillPath($brush, $hand)
+            $hand.Dispose()
+            # 拇指：单独旋转一个圆角矩形，从掌心左侧往上偏左
+            $e.Graphics.ResetTransform()
+            $e.Graphics.TranslateTransform(($f * 0.235), ($f * 0.66))
+            $e.Graphics.RotateTransform(-45)
+            $tp = New-RoundedPath (-$f * 0.078) (-$f * 0.34) ($f * 0.156) ($f * 0.34) ($f * 0.078)
+            $e.Graphics.FillPath($brush, $tp)
+            $tp.Dispose()
+            $e.Graphics.ResetTransform()
+            $brush.Dispose()
+        } catch { }
+    })
+$card.Controls.Add($handMark)
 
 $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.AutoSize = $false
@@ -2085,11 +2129,35 @@ $script:ClockDate.ForeColor = [System.Drawing.Color]::FromArgb(150, 156, 164)
 $script:ClockDate.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:Form.Controls.Add($script:ClockDate)
 
-function Update-PowerInfo {
-    # 电量：PowerStatus 读一次很便宜，但没必要挂在 250ms 的 tick 上 —— 调用方按 10 秒节流。
-    # 没有电池（台式机、或电池被禁用）就整块不画；电量读不到时只画图标、不写百分比。
-    # 电量是画在遮罩 Paint 里的，所以变化时让遮罩重画一次（10 秒才一次，开销可以忽略）。
+function Update-NetInfo {
+    # 网络：只判断"通不通、有线还是无线"，不读 Wi-Fi 名称、不读信号强度 ——
+    # 后者要走 WLAN API，而且名字本身也算隐私，遮罩上不该出现。
     try {
+        $wifi = $false
+        $wired = $false
+        foreach ($ni in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+            if ($ni.OperationalStatus -ne [System.Net.NetworkInformation.OperationalStatus]::Up) { continue }
+            $t = $ni.NetworkInterfaceType
+            if ($t -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Loopback) { continue }
+            if ($t -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Tunnel) { continue }
+            if ($t -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Wireless80211) { $wifi = $true }
+            else { $wired = $true }
+        }
+        $kind = 'none'
+        if ($wifi) { $kind = 'wifi' }
+        elseif ($wired) { $kind = 'eth' }
+        if ($script:NetKind -ne $kind) {
+            $script:NetKind = $kind
+            try { $script:Form.Invalidate() } catch { }
+        }
+    } catch { }
+}
+
+function Update-PowerInfo {
+    # 电量 + 网络一起刷新：两者都挂在同一个 10 秒节流上，没必要各开一条心跳。
+    # 没有电池（台式机、或电池被禁用）就不画电池那半边；电量读不到时只画图标、不写百分比。
+    try {
+        Update-NetInfo
         $ps = [System.Windows.Forms.SystemInformation]::PowerStatus
         if ($null -eq $ps) { return }
         $flags = $ps.BatteryChargeStatus
@@ -2289,7 +2357,10 @@ $script:Form.Add_Paint({
                 # 壁纸很亮的时候图标也不会糊进背景。
                 $padX = [float](14 * $script:Scale)
                 $padY = [float](6 * $script:Scale)
-                $pillW = [float]($bw + $script:PowerGap + $script:PowerTextW + $padX * 2)
+                # 网络图标排在电池左边，复刻 Win11 锁屏右下角那一组
+                $netW = [float]($h * 1.15)
+                $netGap = [float]($script:PowerGap)
+                $pillW = [float]($netW + $netGap + $bw + $script:PowerGap + $script:PowerTextW + $padX * 2)
                 $pillH = [float]($h + $padY * 2)
                 $pillX = [float]($sender.ClientSize.Width - $script:EdgeX - $pillW)
                 $pillY = [float]($bottom + ($script:BarH - $pillH) / 2)
@@ -2305,6 +2376,38 @@ $script:Form.Add_Paint({
                 $pill.Dispose()
                 $x = [float]($pillX + $padX)
                 $y = [float]($pillY + $padY)
+                # ---------- 网络状态：Wi-Fi 三弧 / 有线小插头 / 无网斜杠（只看"通不通"，不读 Wi-Fi 名和信号强度）
+                $nk = $script:NetKind
+                if ([string]::IsNullOrEmpty($nk)) { $nk = 'none' }
+                $ncx = [float]($x + $netW / 2)
+                $ncy = [float]($y + $h * 0.68)
+                $npen = New-Object System.Drawing.Pen $ink, ([float][math]::Max(1.2, $script:Scale * 0.9))
+                if ($nk -eq 'wifi') {
+                    $npen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    $npen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    for ($wi = 0; $wi -lt 3; $wi++) {
+                        $arcR = [float]($h * (0.20 + 0.17 * $wi))
+                        $arcRect = New-Object System.Drawing.RectangleF(($ncx - $arcR), ($ncy - $arcR), ($arcR * 2), ($arcR * 2))
+                        $g.DrawArc($npen, $arcRect, 220, 100)
+                    }
+                    $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.05), ($ncy - $h * 0.05), ($h * 0.10), ($h * 0.10))
+                }
+                elseif ($nk -eq 'eth') {
+                    $plugW = [float]($h * 0.46)
+                    $plugH = [float]($h * 0.40)
+                    $plug = New-RoundedPath ($ncx - $plugW / 2) ($ncy - $plugH * 1.1) $plugW $plugH ([float]($h * 0.07))
+                    $g.DrawPath($npen, $plug)
+                    $plug.Dispose()
+                    $g.DrawLine($npen, $ncx, $ncy, $ncx, ($ncy + $h * 0.28))
+                    $g.DrawLine($npen, ($ncx - $h * 0.13), ($ncy + $h * 0.28), ($ncx + $h * 0.13), ($ncy + $h * 0.28))
+                }
+                else {
+                    $rr = [float]($h * 0.30)
+                    $g.DrawEllipse($npen, ($ncx - $rr), ($ncy - $rr * 0.75), ($rr * 2), ($rr * 1.5))
+                    $g.DrawLine($npen, ($ncx - $rr * 0.85), ($ncy + $rr * 0.65), ($ncx + $rr * 0.85), ($ncy - $rr * 0.95))
+                }
+                $npen.Dispose()
+                $x += $netW + $netGap
                 $pen = New-Object System.Drawing.Pen $ink, $penW
                 $body = New-RoundedPath $x $y $bodyW $h $r
                 $g.DrawPath($pen, $body)

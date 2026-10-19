@@ -720,7 +720,7 @@ function Invoke-Sound {
         switch ($Kind) {
             'error' { [System.Media.SystemSounds]::Hand.Play() }
             'warn' { [System.Media.SystemSounds]::Exclamation.Play() }
-            'ok' { [System.Media.SystemSounds]::Asterisk.Play() }
+            'ok' { }   
         }
     }
     catch { }
@@ -2344,7 +2344,7 @@ $script:Form.Add_Paint({
                 if ([string]::IsNullOrEmpty($nk)) { $nk = 'none' }
                 $ncx = [float]($x + $netW / 2)
                 $ncy = [float]($y + $h * 0.68)
-                $npen = New-Object System.Drawing.Pen $ink, ([float][math]::Max(1.2, $script:Scale * 0.9))
+                $npen = New-Object System.Drawing.Pen $ink, ([float][math]::Max(1.8, $h * 0.13))
                 if ($nk -eq 'wifi') {
                     $npen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                     $npen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -2354,7 +2354,7 @@ $script:Form.Add_Paint({
                     if (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 25)) { $wifiLvl = 1 }
                     elseif (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 55)) { $wifiLvl = 2 }
                     for ($wi = 0; $wi -lt 3; $wi++) {
-                        $arcR = [float]($h * (0.20 + 0.17 * $wi))
+                        $arcR = [float]($h * (0.21 + 0.17 * $wi))
                         $arcRect = New-Object System.Drawing.RectangleF(($ncx - $arcR), ($ncy - $arcR), ($arcR * 2), ($arcR * 2))
                         if ($wi -lt $wifiLvl) {
                             $g.DrawArc($npen, $arcRect, 220, 100)
@@ -2368,21 +2368,20 @@ $script:Form.Add_Paint({
                             $dimPen.Dispose()
                         }
                     }
-                    $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.05), ($ncy - $h * 0.05), ($h * 0.10), ($h * 0.10))
-                }
-                elseif ($nk -eq 'eth') {
-                    $plugW = [float]($h * 0.46)
-                    $plugH = [float]($h * 0.40)
-                    $plug = New-RoundedPath ($ncx - $plugW / 2) ($ncy - $plugH * 1.1) $plugW $plugH ([float]($h * 0.07))
-                    $g.DrawPath($npen, $plug)
-                    $plug.Dispose()
-                    $g.DrawLine($npen, $ncx, $ncy, $ncx, ($ncy + $h * 0.28))
-                    $g.DrawLine($npen, ($ncx - $h * 0.13), ($ncy + $h * 0.28), ($ncx + $h * 0.13), ($ncy + $h * 0.28))
+                    $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.06), ($ncy - $h * 0.06), ($h * 0.12), ($h * 0.12))
                 }
                 else {
-                    $rr = [float]($h * 0.30)
-                    $g.DrawEllipse($npen, ($ncx - $rr), ($ncy - $rr * 0.75), ($rr * 2), ($rr * 1.5))
-                    $g.DrawLine($npen, ($ncx - $rr * 0.85), ($ncy + $rr * 0.65), ($ncx + $rr * 0.85), ($ncy - $rr * 0.95))
+                    
+                    
+                    
+                    $gr = [float]($h * 0.40)
+                    $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($ncy - $gr), ($gr * 2), ($gr * 2))
+                    $g.DrawEllipse($npen, $grRect)
+                    $g.DrawEllipse($npen, ($ncx - $gr * 0.42), ($ncy - $gr), ($gr * 0.84), ($gr * 2))
+                    $g.DrawLine($npen, ($ncx - $gr), $ncy, ($ncx + $gr), $ncy)
+                    if ($nk -ne 'eth') {
+                        $g.DrawLine($npen, ($ncx - $gr * 0.88), ($ncy + $gr * 0.88), ($ncx + $gr * 0.88), ($ncy - $gr * 0.88))
+                    }
                 }
                 $npen.Dispose()
                 $x += $netW + $netGap

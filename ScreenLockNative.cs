@@ -114,6 +114,29 @@ public static class ScreenLockNative
         return SetThreadExecutionState(0x80000000u) != 0;                 // ES_CONTINUOUS
     }
 
+    // ---------------- 隐藏窗口跑一个命令并收下输出 ----------------
+    // 只用来读 Wi-Fi 信号（netsh wlan show interfaces）。产品是 winexe，直接 & netsh 会闪一下
+    // 控制台窗口；CreateNoWindow + 重定向既没有窗口也不会挂住（有 5 秒上限）。
+    public static string RunHidden(string exePath, string arguments)
+    {
+        try
+        {
+            System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(exePath, arguments);
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+            {
+                string output = p.StandardOutput.ReadToEnd();
+                p.StandardError.ReadToEnd();       // 不读完的话管道可能把子进程卡住
+                if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return ""; }
+                return output;
+            }
+        }
+        catch { return ""; }
+    }
+
     // ---------------- idle / last input ----------------
     [StructLayout(LayoutKind.Sequential)]
     private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }

@@ -2129,6 +2129,28 @@ function Update-NetInfo {
         $kind = 'none'
         if ($wifi) { $kind = 'wifi' }
         elseif ($wired) { $kind = 'eth' }
+        # Wi-Fi 信号强度：netsh 一次约 0.5 秒，所以 30 秒才轮询一次（其余时间用缓存值）。
+        # 输出格式是 "Signal : 87%"，正则只认百分号，跟系统语言无关。读不到就保持未知（画满格）。
+        if ($kind -eq 'wifi') {
+            $lastProbe = $script:LastWifiProbe
+            if ($null -eq $lastProbe) { $lastProbe = [datetime]::MinValue }
+            $sigNow = Get-Date
+            if ((($sigNow - $lastProbe).TotalSeconds -ge 30) -or ($null -eq $script:WifiSignal) -or ($script:WifiSignal -lt 0)) {
+                $script:LastWifiProbe = $sigNow
+                try {
+                    $netshPath = Join-Path $env:SystemRoot 'System32\netsh.exe'
+                    $netshOut = [ScreenLockNative]::RunHidden($netshPath, 'wlan show interfaces')
+                    $sigMatch = [regex]::Match([string]$netshOut, '(\d{1,3})\s*%')
+                    if ($sigMatch.Success) {
+                        $script:WifiSignal = [int]$sigMatch.Groups[1].Value
+                        try { $script:Form.Invalidate() } catch { }
+                    }
+                } catch { }
+            }
+        }
+        else {
+            $script:WifiSignal = -1
+        }
         if ($script:NetKind -ne $kind) {
             $script:NetKind = $kind
             try { $script:Form.Invalidate() } catch { }
@@ -2368,10 +2390,25 @@ $script:Form.Add_Paint({
                 if ($nk -eq 'wifi') {
                     $npen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                     $npen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    # 信号强度：<25% 亮内圈一格、<55% 亮两格，其余三格全亮。
+                    # 没读到（-1）就按满格画，别让图标看起来像"没信号"。
+                    $wifiLvl = 3
+                    if (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 25)) { $wifiLvl = 1 }
+                    elseif (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 55)) { $wifiLvl = 2 }
                     for ($wi = 0; $wi -lt 3; $wi++) {
                         $arcR = [float]($h * (0.20 + 0.17 * $wi))
                         $arcRect = New-Object System.Drawing.RectangleF(($ncx - $arcR), ($ncy - $arcR), ($arcR * 2), ($arcR * 2))
-                        $g.DrawArc($npen, $arcRect, 220, 100)
+                        if ($wi -lt $wifiLvl) {
+                            $g.DrawArc($npen, $arcRect, 220, 100)
+                        }
+                        else {
+                            # 没点亮的那几格画淡一档，一眼能看出"信号只有一格"
+                            $dimPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(72, $ink)), $npen.Width
+                            $dimPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                            $dimPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                            $g.DrawArc($dimPen, $arcRect, 220, 100)
+                            $dimPen.Dispose()
+                        }
                     }
                     $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.05), ($ncy - $h * 0.05), ($h * 0.10), ($h * 0.10))
                 }

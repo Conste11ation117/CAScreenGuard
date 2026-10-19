@@ -2087,6 +2087,28 @@ function Update-NetInfo {
         $kind = 'none'
         if ($wifi) { $kind = 'wifi' }
         elseif ($wired) { $kind = 'eth' }
+        
+        
+        if ($kind -eq 'wifi') {
+            $lastProbe = $script:LastWifiProbe
+            if ($null -eq $lastProbe) { $lastProbe = [datetime]::MinValue }
+            $sigNow = Get-Date
+            if ((($sigNow - $lastProbe).TotalSeconds -ge 30) -or ($null -eq $script:WifiSignal) -or ($script:WifiSignal -lt 0)) {
+                $script:LastWifiProbe = $sigNow
+                try {
+                    $netshPath = Join-Path $env:SystemRoot 'System32\netsh.exe'
+                    $netshOut = [ScreenLockNative]::RunHidden($netshPath, 'wlan show interfaces')
+                    $sigMatch = [regex]::Match([string]$netshOut, '(\d{1,3})\s*%')
+                    if ($sigMatch.Success) {
+                        $script:WifiSignal = [int]$sigMatch.Groups[1].Value
+                        try { $script:Form.Invalidate() } catch { }
+                    }
+                } catch { }
+            }
+        }
+        else {
+            $script:WifiSignal = -1
+        }
         if ($script:NetKind -ne $kind) {
             $script:NetKind = $kind
             try { $script:Form.Invalidate() } catch { }
@@ -2326,10 +2348,25 @@ $script:Form.Add_Paint({
                 if ($nk -eq 'wifi') {
                     $npen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                     $npen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    
+                    
+                    $wifiLvl = 3
+                    if (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 25)) { $wifiLvl = 1 }
+                    elseif (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 55)) { $wifiLvl = 2 }
                     for ($wi = 0; $wi -lt 3; $wi++) {
                         $arcR = [float]($h * (0.20 + 0.17 * $wi))
                         $arcRect = New-Object System.Drawing.RectangleF(($ncx - $arcR), ($ncy - $arcR), ($arcR * 2), ($arcR * 2))
-                        $g.DrawArc($npen, $arcRect, 220, 100)
+                        if ($wi -lt $wifiLvl) {
+                            $g.DrawArc($npen, $arcRect, 220, 100)
+                        }
+                        else {
+                            
+                            $dimPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(72, $ink)), $npen.Width
+                            $dimPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                            $dimPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                            $g.DrawArc($dimPen, $arcRect, 220, 100)
+                            $dimPen.Dispose()
+                        }
                     }
                     $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.05), ($ncy - $h * 0.05), ($h * 0.10), ($h * 0.10))
                 }

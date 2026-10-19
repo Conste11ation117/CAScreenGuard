@@ -81,7 +81,20 @@ public static class Str
         { "k65", "查看说明文档（README）" },
         { "k66", "界面语言" },
         { "k67", "下一步" },
-        { "k68", "CAScreenGuard 会在你离开时替你看着屏幕：只关显示器（不休眠、不锁定 Windows 会话、保持系统唤醒），最上层盖一层全屏黑幕挡住桌面内容，只有输对解锁密码才会恢复。它不是安全边界，只防「路过的人随手看一眼」，详细说明见 README。" },
+        { "k80", "检测到本机已安装 " },
+        { "k81", "\n\n升级只替换程序文件：解锁密码、授权码、提示、快捷键、桌面快捷方式全部保留。继续吗？" },
+        { "k83", "注册表里有安装登记，但没有记下安装目录，无法安全升级。" },
+        { "k84", "登记里的安装目录已经不存在了：\n" },
+        { "k85", "这个目录看起来不是 CAScreenGuard 的安装目录，不敢动它：\n" },
+        { "k86", "安装目录里找不到配置文件，升级可能导致凭据丢失，已停止：\n" },
+        { "k87", "CAScreenGuard 正在运行（或上次没有正常退出）。请先解锁并退出，再运行这个安装包。" },
+        { "k88", "（注意：旧文件备份失败，回滚副本可能不完整。）\n" },
+        { "k89", "已升级到 " },
+        { "k90", "。\n\n安装位置：" },
+        { "k91", "\n\n解锁密码与授权码保持不变。" },
+        { "k92", "旧版本" },
+        { "k93", "升级失败：" },
+        { "k94", "\n\n为保护现有凭据，本次没有做任何修改。要重装的话，请先在「设置 → 应用」里卸载 CAScreenGuard。" },        { "k68", "CAScreenGuard 会在你离开时替你看着屏幕：只关显示器（不休眠、不锁定 Windows 会话、保持系统唤醒），最上层盖一层全屏黑幕挡住桌面内容，只有输对解锁密码才会恢复。它不是安全边界，只防「路过的人随手看一眼」，详细说明见 README。\n\n获取新版本：github.com/Conste11ation117/CAScreenGuard/releases" },
         { "k69", "欢迎" },
         { "k70", "上一页" },
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
@@ -162,7 +175,20 @@ public static class Str
         { "k65", "Open the README" },
         { "k66", "Language" },
         { "k67", "Next" },
-        { "k68", "CAScreenGuard watches the screen while you are away: it turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask. Only the unlock password brings it back. It is not a security boundary — it stops a passer-by from glancing at your screen. See the README for details." },
+        { "k80", "An existing install was found: " },
+        { "k81", "\n\nUpgrading replaces the program files only: the unlock password, authorization code, hint, hotkey and desktop shortcut all stay. Continue?" },
+        { "k83", "There is an install registration, but no install folder recorded, so it cannot be upgraded safely." },
+        { "k84", "The recorded install folder no longer exists:\n" },
+        { "k85", "This folder does not look like a CAScreenGuard install, so it will not be touched:\n" },
+        { "k86", "No configuration file in the install folder; upgrading could lose the credentials, so it stopped:\n" },
+        { "k87", "CAScreenGuard is running (or it did not exit cleanly last time). Unlock and quit it first, then run this installer again." },
+        { "k88", "(Note: backing up the old files failed, so the rollback copy may be incomplete.)\n" },
+        { "k89", "Upgraded to " },
+        { "k90", ".\n\nInstall location: " },
+        { "k91", "\n\nThe unlock password and authorization code are unchanged." },
+        { "k92", "an older version" },
+        { "k93", "Upgrade failed: " },
+        { "k94", "\n\nNothing was modified this time, to protect the existing credentials. To reinstall, uninstall CAScreenGuard from Settings > Apps first." },        { "k68", "CAScreenGuard watches the screen while you are away: it turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask. Only the unlock password brings it back. It is not a security boundary — it stops a passer-by from glancing at your screen. See the README for details.\n\nNew versions: github.com/Conste11ation117/CAScreenGuard/releases" },
         { "k69", "Welcome" },
         { "k70", "Back" },
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
@@ -273,7 +299,31 @@ public class CAScreenGuardInstaller
         {
             // 提权助手模式：安装器以管理员身份被自己拉起来过一次，只做"建目录 + 授权"这件事。
             // 放在最前面，而且不弹任何界面 —— 用户看到的只是 UAC 那一下。
-            if (args.Length >= 3 && args[0].Equals("/prepare-dir", StringComparison.OrdinalIgnoreCase))
+            // 升级入口：本机装过且能就地升级 → 一句问话，只换程序文件，凭据一个字节都不动。
+            // 用户选"不"就直接退出 —— 绝不能落进下面的向导，那条路会走 Install 的"重装=清凭据"。
+            if (args.Length == 0 || (args.Length == 1 && args[0].Equals("/upgrade", StringComparison.OrdinalIgnoreCase)))
+            {
+                string upDir, upWhy;
+                if (CanUpgrade(out upDir, out upWhy))
+                {
+                    string oldVer = InstalledVersion();
+                    if (string.IsNullOrEmpty(oldVer)) { oldVer = Str.S("k92"); }
+                    string q = Str.S("k80") + oldVer + "\n" + upDir + "\n\n" + Str.S("k81");
+                    if (MessageBox.Show(q, AppName + " " + AppVersion, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        string upMsg;
+                        try { upMsg = DoUpgrade(upDir); }
+                        catch (Exception upEx) { upMsg = Str.S("k93") + upEx.Message; }
+                        MessageBox.Show(upMsg, AppName + " " + AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    return;
+                }
+                if (!string.IsNullOrEmpty(upWhy))
+                {
+                    MessageBox.Show(upWhy + Str.S("k94"), AppName + " " + AppVersion, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }            if (args.Length >= 3 && args[0].Equals("/prepare-dir", StringComparison.OrdinalIgnoreCase))
             {
                 Environment.Exit(PrepareDirElevated(args[1], args[2]));
                 return;
@@ -425,6 +475,93 @@ public class CAScreenGuardInstaller
         return null;
     }
 
+    // ---------- 升级 ----------
+    // "装过"不等于"能升级"：目录可能被挪走、配置可能被删、程序可能还开着。
+    // 这几种情况一律只报原因、不动手 —— 唯一不能丢的是配置与外部凭证。
+    internal static string InstalledVersion()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(StoreKey))
+            {
+                if (k != null) { object v = k.GetValue("Version"); return (v == null) ? null : v.ToString(); }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    internal static bool CanUpgrade(out string dir, out string why)
+    {
+        dir = null; why = null;
+        if (!AlreadyInstalled()) { return false; }          // 干净机器：why 留空，正常走全新安装
+        string oldDir = InstalledDir();
+        if (string.IsNullOrEmpty(oldDir)) { why = Str.S("k83"); return false; }
+        if (!Directory.Exists(oldDir)) { why = Str.S("k84") + oldDir; return false; }
+        if (!LooksLikeOurInstall(oldDir)) { why = Str.S("k85") + oldDir; return false; }
+        if (!File.Exists(Path.Combine(oldDir, CfgLeaf))) { why = Str.S("k86") + oldDir; return false; }
+        try { if (File.Exists(Path.Combine(MirrorDir, "running.flag"))) { why = Str.S("k87"); return false; } }
+        catch { }
+        dir = oldDir;
+        return true;
+    }
+
+    // 就地升级：只替换程序文件，配置/凭证/语言/快捷键/镜像/封禁记录/快捷方式全都原样留着。
+    // 刻意**不调用** RemoveExternalCredentials、DeleteFolderTree、RemoveShortcut —— 一次都不。
+    internal static string DoUpgrade(string dir)
+    {
+        string backup = Path.Combine(dir, "backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        string backupNote = "";
+        try
+        {
+            Directory.CreateDirectory(backup);
+            foreach (string leaf in new string[] { ScriptLeaf, IconLeaf, EarlyLeaf, NativeLeaf, LicenseLeaf, "uninstall.exe" })
+            {
+                string src = Path.Combine(dir, leaf);
+                if (File.Exists(src)) { File.Copy(src, Path.Combine(backup, leaf), true); }
+            }
+        }
+        catch { backupNote = Str.S("k88"); }
+
+        // 先写 .new 再替换：中途失败时旧文件还在，不会留下半截脚本
+        WritePayloadAtomic(dir, ScriptLeaf, PAYLOAD_PS1);
+        WritePayloadAtomic(dir, IconLeaf, PAYLOAD_ICO);
+        WritePayloadAtomic(dir, EarlyLeaf, PAYLOAD_EARLY);
+        WritePayloadAtomic(dir, NativeLeaf, PAYLOAD_NATIVE);
+        WritePayloadAtomic(dir, LicenseLeaf, PAYLOAD_LICENSE);
+
+        string uninst = Path.Combine(dir, "uninstall.exe");
+        try { File.Copy(Application.ExecutablePath, uninst, true); } catch { }
+
+        // 只补一个 Version；Token/MarkerKey/AuthSalt/AuthHash/Provisioned/Lang/Hotkey 原样保留
+        using (RegistryKey k = Registry.CurrentUser.CreateSubKey(StoreKey)) { k.SetValue("Version", AppVersion); }
+        try
+        {
+            using (RegistryKey u = Registry.CurrentUser.CreateSubKey(UninstallKey))
+            {
+                u.SetValue("DisplayVersion", AppVersion.TrimStart('V'));
+                u.SetValue("InstallLocation", dir);
+                u.SetValue("DisplayIcon", uninst);
+                u.SetValue("UninstallString", "\"" + uninst + "\" /uninstall");
+            }
+        }
+        catch { }
+
+        return Str.S("k89") + AppVersion + Str.S("k90") + dir + "\n" + backup + "\n\n" + backupNote + Str.S("k91");
+    }
+
+    static void WritePayloadAtomic(string dir, string leaf, string payloadB64)
+    {
+        string target = Path.Combine(dir, leaf);
+        string temp = target + ".new";
+        File.WriteAllBytes(temp, Convert.FromBase64String(payloadB64));
+        if (File.Exists(target))
+        {
+            try { File.Replace(temp, target, null); return; } catch { }
+            try { File.Delete(target); } catch { }
+        }
+        if (File.Exists(temp)) { File.Move(temp, target); }
+    }
     // 只对"确实是我们装的那一份"动手：文件夹里有我们的文件，或者它本来就是空的。
     // 万一这个登记值被改成了别的目录，也不会误删用户的东西。
     static bool LooksLikeOurInstall(string dir)
@@ -610,6 +747,7 @@ public class CAScreenGuardInstaller
             k.SetValue("InstallDir", dir);
             k.SetValue("Lang", Str.Lang);
             k.SetValue("Hotkey", hotkeyKey == null ? "" : hotkeyKey.Trim());
+            k.SetValue("Version", AppVersion);
             // 重新安装 = 全新的开始：把「认证码永久封禁」一并清掉，
             // 否则那次的记录会跟着这台机器一直走下去（警告里让用户重新安装，就得真能解决）
             k.DeleteValue("AuthBan", false);

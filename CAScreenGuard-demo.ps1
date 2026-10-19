@@ -2416,13 +2416,15 @@ $script:Form.Add_Paint({
                     # 有线 / 无网：画一个地球（圆 + 经线 + 赤道），笔画和 Wi-Fi 一样粗 ——
                     # 试过系统图标字体的 E839/E774/E871，这个尺寸下细得看不清，不如自己画。
                     # 无网时再给地球拉一道斜杠。
-                    $gr = [float]($h * 0.40)
-                    $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($ncy - $gr), ($gr * 2), ($gr * 2))
+                    # 地球按图标框的中线居中（$ncy 是 Wi-Fi 弧线的底部基准，直接拿它当圆心会偏下）
+                    $gcy = [float]($y + $h * 0.5)
+                    $gr = [float]($h * 0.38)
+                    $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($gcy - $gr), ($gr * 2), ($gr * 2))
                     $g.DrawEllipse($npen, $grRect)
-                    $g.DrawEllipse($npen, ($ncx - $gr * 0.42), ($ncy - $gr), ($gr * 0.84), ($gr * 2))
-                    $g.DrawLine($npen, ($ncx - $gr), $ncy, ($ncx + $gr), $ncy)
+                    $g.DrawEllipse($npen, ($ncx - $gr * 0.42), ($gcy - $gr), ($gr * 0.84), ($gr * 2))
+                    $g.DrawLine($npen, ($ncx - $gr), $gcy, ($ncx + $gr), $gcy)
                     if ($nk -ne 'eth') {
-                        $g.DrawLine($npen, ($ncx - $gr * 0.88), ($ncy + $gr * 0.88), ($ncx + $gr * 0.88), ($ncy - $gr * 0.88))
+                        $g.DrawLine($npen, ($ncx - $gr * 0.88), ($gcy + $gr * 0.88), ($ncx + $gr * 0.88), ($gcy - $gr * 0.88))
                     }
                 }
                 $npen.Dispose()

@@ -2374,13 +2374,15 @@ $script:Form.Add_Paint({
                     
                     
                     
-                    $gr = [float]($h * 0.40)
-                    $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($ncy - $gr), ($gr * 2), ($gr * 2))
+                    
+                    $gcy = [float]($y + $h * 0.5)
+                    $gr = [float]($h * 0.38)
+                    $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($gcy - $gr), ($gr * 2), ($gr * 2))
                     $g.DrawEllipse($npen, $grRect)
-                    $g.DrawEllipse($npen, ($ncx - $gr * 0.42), ($ncy - $gr), ($gr * 0.84), ($gr * 2))
-                    $g.DrawLine($npen, ($ncx - $gr), $ncy, ($ncx + $gr), $ncy)
+                    $g.DrawEllipse($npen, ($ncx - $gr * 0.42), ($gcy - $gr), ($gr * 0.84), ($gr * 2))
+                    $g.DrawLine($npen, ($ncx - $gr), $gcy, ($ncx + $gr), $gcy)
                     if ($nk -ne 'eth') {
-                        $g.DrawLine($npen, ($ncx - $gr * 0.88), ($ncy + $gr * 0.88), ($ncx + $gr * 0.88), ($ncy - $gr * 0.88))
+                        $g.DrawLine($npen, ($ncx - $gr * 0.88), ($gcy + $gr * 0.88), ($ncx + $gr * 0.88), ($gcy - $gr * 0.88))
                     }
                 }
                 $npen.Dispose()

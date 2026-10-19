@@ -2003,36 +2003,19 @@ $handMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
 $handMark.Add_Paint({
         param($sender, $e)
         try {
+            # 直接用系统符号字体里的「举起的手」U+270B：单色字形、可以染成白色，
+            # 比手工拼圆角矩形干净得多；而且是 Unicode 标准字形（各平台都在用），不涉及侵权。
+            # Segoe UI Symbol 从 Windows 7 起就是系统自带，不需要额外安装任何字体。
             $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $e.Graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
             $f = [float]$sender.Width
+            $font = New-Object System.Drawing.Font('Segoe UI Symbol', [float]($f * 1.02), [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+            $fmt = New-Object System.Drawing.StringFormat
+            $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+            $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
             $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(242, 242, 244))
-            # 造型参照"举起的手掌"：四指并拢（顶端各留圆角 → 四个浅弧指峰，中指最高）、
-            # 掌心先画且宽度略小于四指跨度（上沿藏在指根后面，所以看不到"腰"）、拇指从左侧斜出。
-            # 全部是圆角矩形拼的通用图形，不是任何图标库那张图的复制。
-            $hand = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $hand.FillMode = [System.Drawing.Drawing2D.FillMode]::Winding
-            $palm = New-RoundedPath ($f * 0.215) ($f * 0.50) ($f * 0.57) ($f * 0.42) ($f * 0.13)
-            $hand.AddPath($palm, $true); $palm.Dispose()
-            $fw = 0.145
-            $leftX = @(0.210, 0.355, 0.500, 0.645)
-            $topY = @(0.055, 0.020, 0.035, 0.090)
-            for ($i = 0; $i -lt 4; $i++) {
-                $fy = $f * $topY[$i]
-                $fh = ($f * 0.62) - $fy
-                $fp = New-RoundedPath ($f * $leftX[$i]) $fy ($f * $fw) $fh ($f * $fw / 2)
-                $hand.AddPath($fp, $true); $fp.Dispose()
-            }
-            $e.Graphics.FillPath($brush, $hand)
-            $hand.Dispose()
-            # 拇指：单独旋转一个圆角矩形，从掌心左侧往上偏左
-            $e.Graphics.ResetTransform()
-            $e.Graphics.TranslateTransform(($f * 0.235), ($f * 0.66))
-            $e.Graphics.RotateTransform(-45)
-            $tp = New-RoundedPath (-$f * 0.078) (-$f * 0.34) ($f * 0.156) ($f * 0.34) ($f * 0.078)
-            $e.Graphics.FillPath($brush, $tp)
-            $tp.Dispose()
-            $e.Graphics.ResetTransform()
-            $brush.Dispose()
+            $e.Graphics.DrawString([string][char]0x270B, $font, $brush, (New-Object System.Drawing.RectangleF(0, 0, $f, $f)), $fmt)
+            $brush.Dispose(); $fmt.Dispose(); $font.Dispose()
         } catch { }
     })
 $card.Controls.Add($handMark)

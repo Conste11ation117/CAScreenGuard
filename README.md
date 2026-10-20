@@ -1,4 +1,4 @@
-# CAScreenGuard
+﻿# CAScreenGuard
 
 **English** · [简体中文](README.zh-CN.md)
 
@@ -19,7 +19,7 @@ back to plain black when the wallpaper cannot be read), with the time and date a
 the way Windows 11 lays out its lock screen — so a blanked screen looks like the lock screen rather than
 a black rectangle. Your desktop never shows through.
 
-- Version: **V2.2.0**
+- Version: **V3.0.0**
 - Author: **@Conste11ation117**
 - Requirements: Windows 10 / 11 with Windows PowerShell 5.1 (built in — nothing to install)
 - License: [MIT](LICENSE)

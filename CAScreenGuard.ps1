@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 
 
-$script:AppVersion = 'V2.2.0'
+$script:AppVersion = 'V3.0.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -2116,11 +2116,53 @@ function Update-NetInfo {
     } catch { }
 }
 
+function Update-AgentState {
+    
+    
+    
+    
+    $list = New-Object System.Collections.ArrayList
+    try {
+        $dir = Join-Path $env:LOCALAPPDATA 'CAScreenGuard'
+        $files = New-Object System.Collections.ArrayList
+        $agDir = Join-Path $dir 'agents'
+        if (Test-Path -LiteralPath $agDir) {
+            foreach ($fi in @(Get-ChildItem -LiteralPath $agDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+                [void]$files.Add($fi.FullName)
+            }
+        }
+        if ($files.Count -eq 0) {
+            $legacy = Join-Path $dir 'agent-state.json'
+            if (Test-Path -LiteralPath $legacy) { [void]$files.Add($legacy) }
+        }
+        $lock = $script:LockStartedAt
+        if ($null -eq $lock) { $lock = [datetime]::MinValue }
+        $now = Get-Date
+        foreach ($p in $files) {
+            try {
+                $o = (Get-Content -LiteralPath $p -Raw -ErrorAction Stop) | ConvertFrom-Json -ErrorAction Stop
+                $state = [string]$o.state
+                if (($state -ne 'working') -and ($state -ne 'waiting')) { continue }
+                $since = [datetime]::MinValue
+                try {
+                    $since = [datetime]::Parse([string]$o.since, [System.Globalization.CultureInfo]::InvariantCulture).ToLocalTime()
+                } catch { continue }
+                $age = ($now - $since).TotalSeconds
+                if (($age -lt 0) -or ($age -gt 600)) { continue }
+                if (($state -eq 'waiting') -and ($since -lt $lock)) { continue }
+                [void]$list.Add([pscustomobject]@{ State = $state; Reason = [string]$o.reason; Since = $since; Age = $age })
+            } catch { }
+        }
+    } catch { }
+    $script:AgentSessions = $list
+}
+
 function Update-PowerInfo {
     
     
     try {
         Update-NetInfo
+        Update-AgentState
         $ps = [System.Windows.Forms.SystemInformation]::PowerStatus
         if ($null -eq $ps) { return }
         $flags = $ps.BatteryChargeStatus
@@ -2439,6 +2481,103 @@ $script:Form.Add_Paint({
         } catch { }
     })
 
+
+
+
+$script:Form.Add_Paint({
+        param($sender, $e)
+        try {
+            $sessions = $script:AgentSessions
+            if (($null -eq $sessions) -or ($sessions.Count -eq 0)) { return }
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
+
+            $isZh = ($script:Lang -eq 'zh')
+            $asking = @($sessions | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
+            $working = @($sessions | Where-Object { $_.State -eq 'working' })
+            $n = $sessions.Count
+
+            $tone = 'normal'
+            if ($asking.Count -gt 0) {
+                $tone = 'ask'
+                $picked = ($asking | Sort-Object Age -Descending | Select-Object -First 1)
+            }
+            elseif ($working.Count -gt 0) {
+                $picked = ($working | Sort-Object Age -Descending | Select-Object -First 1)
+            }
+            else {
+                $tone = 'done'
+                $picked = ($sessions | Sort-Object Since -Descending | Select-Object -First 1)
+            }
+            $mins = [int][math]::Floor($picked.Age / 60)
+            $ago = ''
+            if ($mins -lt 1) { $ago = $(if ($isZh) { '刚刚' } else { 'just now' }) }
+            elseif ($isZh) { $ago = ($mins.ToString() + ' 分钟') }
+            else { $ago = ($mins.ToString() + ' min') }
+
+            $many = ($n -gt 1)
+            if ($tone -eq 'ask') {
+                $txt = $(if ($isZh) { $(if ($many) { "DSH 等你回答 · $n 个对话" } else { 'DSH 等你回答' }) + ' · ' + $ago }
+                         else { $(if ($many) { "DSH needs you · $n chats" } else { 'DSH needs you' }) + ' · ' + $ago })
+            }
+            elseif ($tone -eq 'done') {
+                $txt = $(if ($isZh) { $(if ($many) { "DSH 已完成 · $n 个对话" } else { 'DSH 已完成' }) + ' · ' + $ago + '前' }
+                         else { $(if ($many) { "DSH finished · $n chats" } else { 'DSH finished' }) + ' · ' + $ago + ' ago' })
+            }
+            else {
+                $txt = $(if ($isZh) { $(if ($many) { "DSH 正在工作 · $n 个对话" } else { 'DSH 正在工作' }) + ' · 已 ' + $ago }
+                         else { $(if ($many) { "DSH working · $n chats" } else { 'DSH working' }) + ' · ' + $ago })
+            }
+
+            $font = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
+            $sz = $g.MeasureString($txt, $font)
+            $dot = [float](9 * $script:Scale)
+            $padX = [float](14 * $script:Scale)
+            $padY = [float](7 * $script:Scale)
+            $gap = [float](8 * $script:Scale)
+            $chipH = [float]($sz.Height + $padY * 2)
+            $chipW = [float]($padX * 2 + $dot + $gap + $sz.Width)
+            $chipX = [float]$script:EdgeX
+            $chipY = [float]$script:EdgeY
+
+            $plateColor = [System.Drawing.Color]::FromArgb(44, 24, 26, 30)
+            $ink = [System.Drawing.Color]::FromArgb(236, 240, 245)
+            $dotColor = [System.Drawing.Color]::FromArgb(120, 220, 150)
+            if ($tone -eq 'ask') {
+                $plateColor = [System.Drawing.Color]::FromArgb(96, 122, 86, 26)
+                $dotColor = [System.Drawing.Color]::FromArgb(255, 196, 92)
+                $ink = [System.Drawing.Color]::FromArgb(255, 226, 168)
+            }
+            elseif ($tone -eq 'done') {
+                $dotColor = [System.Drawing.Color]::FromArgb(130, 138, 148)
+                $ink = [System.Drawing.Color]::FromArgb(168, 176, 186)
+            }
+
+            $chipR = [float][math]::Min($chipH / 2, 10 * $script:Scale)
+            $path = New-RoundedPath $chipX $chipY $chipW $chipH $chipR
+            $plate = New-Object System.Drawing.SolidBrush $plateColor
+            $g.FillPath($plate, $path)
+            $plate.Dispose()
+            $ring = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(38, 236, 240, 245)), ([float][math]::Max(1, $script:Scale * 0.8))
+            $g.DrawPath($ring, $path)
+            $ring.Dispose()
+            $path.Dispose()
+
+            $dr = [float]($dot / 2)
+            $dcx = [float]($chipX + $padX + $dr)
+            $dcy = [float]($chipY + $chipH / 2)
+            $db = New-Object System.Drawing.SolidBrush $dotColor
+            $g.FillEllipse($db, ($dcx - $dr), ($dcy - $dr), $dot, $dot)
+            $db.Dispose()
+
+            $tb = New-Object System.Drawing.SolidBrush $ink
+            $g.DrawString($txt, $font, $tb, [float]($chipX + $padX + $dot + $gap), [float]($chipY + $padY - 1))
+            $tb.Dispose(); $font.Dispose()
+        } catch { }
+    })
+
+$script:LockStartedAt = Get-Date
 $script:LastPowerRead = [datetime]::MinValue
 $script:PowerInfo = $null
 Update-PowerInfo

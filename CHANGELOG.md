@@ -1,9 +1,30 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.0.0] — 2026-10-20
+
+### The lock screen shows what the agent is doing
+
+- **A status chip in the top-left corner.** The mask reads the JSON written by the companion plugin
+  ([dsh-get-session-status](https://github.com/Conste11ation117/dsh-get-session-status)) and shows one of:
+  - `DSH 正在工作 · 已 6 分钟` — green dot, neutral plate;
+  - `DSH 等你回答 · 2 个对话 · 3 分钟` — **amber plate and text**; the only state that wants you back;
+  - `DSH 已完成 · 7 分钟前` — grey dot, dim text.
+- **Multiple conversations at once.** The plugin writes one file per session under `agents\`; the chip
+  aggregates them into a single line (`2 个对话`), so a dozen parallel sessions never turn into a wall of
+  chips. The newest/oldest one supplies the elapsed time.
+- **Only conversations alive since the lock started are shown.** A `waiting` state that is older than the
+  moment the screen locked is old news and stays hidden; a `working` session is always shown, however long
+  it has been running. Anything older than ten minutes is dropped as stale.
+- **State only, never content.** No prompt, answer, project name or file name ever reaches the lock screen.
+
+### Under the hood
+
+- Reads on the existing 10-second heartbeat; no new timer, no network, no extra process.
+- Falls back to the single `agent-state.json` when the `agents\` directory is absent (older plugin builds).
 ## [2.2.0] — 2026-10-19
 
 ### New look

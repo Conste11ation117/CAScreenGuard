@@ -4,7 +4,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [3.0.0] — 2026-10-20
+## [3.0.0] — 2026-10-20 Sonnet
 
 ### 锁屏知道你不在时 agent 在做什么
 

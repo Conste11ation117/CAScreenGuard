@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.0.0] — 2026-10-20
+## [3.0.0] — 2026-10-20 Sonnet
 
 ### The lock screen shows what the agent is doing
 

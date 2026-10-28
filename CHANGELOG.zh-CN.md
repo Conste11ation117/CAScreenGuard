@@ -4,6 +4,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.1.0] — 2026-10-28
+
+### 任意 agent harness 都能上报状态
+
+- **新增 `bridge\` 通用接入层**，与任何 harness 的内部实现解耦。锁屏只认一份文件契约
+  （`%LOCALAPPDATA%\CAScreenGuard\agents\<source>.json`），所以接一个新 harness 不需要改锁屏。
+  - `cascreenguard-status.ps1`：写入器，一条命令写一份状态，适合配钩子；
+  - `cascreenguard-watch.ps1` + `watch.json`：通用观察器，靠会话日志的活动时间推断，不需要改对方配置；
+  - `README.md`：含各 harness 的钩子模板（**未在本机验证**，装上后再用）。
+- 两者都只用 Windows PowerShell 5.1 自带命令，零依赖；写入是临时文件 + 原子替换。
+
+### 状态精度分档，不再把「不知道」说成「已完成」
+
+- 状态文件新增可选字段 `precision`：`exact`（缺省，有真钩子）／`inferred`（靠日志推断）。
+- 锁屏按它切换显示等级：
+  - `exact` → `DSH 等你回答 · 3 分钟`（琥珀）／`DSH 正在工作 · 已 6 分钟`（绿）／`DSH 已完成 · N 分钟前`（灰）；
+  - `inferred` → **`Codex 最后活动 · 5 分钟前`**（灰，不声称完成，也永不显示琥珀）。
+- 只有「日志不写了」这一个事实时，锁屏不会再断言「这一轮结束了」——那本来是它不知道的事。
+- 多来源混在一起时优先信 `exact`；胶囊标签带上来源名（产品名不是内容，不违反隐私约定）。
+- 老格式（无 `precision` 字段）按 `exact` 解释，现有 DSH 插件无需改动、无需重启。
 ## [3.0.0] — 2026-10-20 Sonnet
 
 ### 锁屏知道你不在时 agent 在做什么

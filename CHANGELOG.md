@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.0] — 2026-10-28
+
+### Any agent harness can report its state
+
+- **New `bridge\` layer**, decoupled from any harness internals. The lock screen only knows one file
+  contract (`%LOCALAPPDATA%\CAScreenGuard\agents\<source>.json`), so adding a harness never means touching
+  the lock screen.
+  - `cascreenguard-status.ps1`: one command writes one state — made for hooks;
+  - `cascreenguard-watch.ps1` + `watch.json`: a generic watcher that infers from session-log activity,
+    needing no configuration on the other side;
+  - `README.md`: hook recipes per harness (**not verified on this machine**; apply after installing one).
+- Both use only stock Windows PowerShell 5.1; writes are temp-file + atomic replace.
+
+### State precision, so "unknown" is no longer reported as "finished"
+
+- State files gain an optional `precision` field: `exact` (default, real hook) or `inferred` (log-based guess).
+- The lock screen switches display tiers on it:
+  - `exact` → `DSH 等你回答 · 3 分钟` (amber) / `DSH 正在工作 · 已 6 分钟` (green) /
+    `DSH 已完成 · N 分钟前` (grey);
+  - `inferred` → **`Codex 最后活动 · 5 分钟前`** (grey; never claims completion, never amber).
+- When all we know is "the log went quiet", the lock screen no longer asserts "the turn ended".
+- With mixed sources, `exact` wins; the chip names its source (a product name is not content).
+- The old format (no `precision`) is read as `exact`, so the running DSH plugin needs no change or restart.
 ## [3.0.0] — 2026-10-20 Sonnet
 
 ### The lock screen shows what the agent is doing

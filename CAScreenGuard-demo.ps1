@@ -64,7 +64,7 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ 界面语言
 # 显示在所有弹出窗口标题里的版本号
-$script:AppVersion = 'V3.0.0'
+$script:AppVersion = 'V3.1.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -2192,7 +2192,13 @@ function Update-AgentState {
                 $age = ($now - $since).TotalSeconds
                 if (($age -lt 0) -or ($age -gt 600)) { continue }
                 if (($state -eq 'waiting') -and ($since -lt $lock)) { continue }
-                [void]$list.Add([pscustomobject]@{ State = $state; Reason = [string]$o.reason; Since = $since; Age = $age })
+                # precision 缺省 = exact：老版插件/写入器不写这个字段，代表调用方真的知道状态
+                $prec = 'exact'
+                if ([string]$o.precision -eq 'inferred') { $prec = 'inferred' }
+                [void]$list.Add([pscustomobject]@{
+                    State = $state; Reason = [string]$o.reason; Since = $since; Age = $age
+                    Source = [string]$o.source; Precision = $prec
+                })
             } catch { }
         }
     } catch { }
@@ -2536,8 +2542,13 @@ $script:Form.Add_Paint({
             $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
 
             $isZh = ($script:Lang -eq 'zh')
-            $asking = @($sessions | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
-            $working = @($sessions | Where-Object { $_.State -eq 'working' })
+            # exact   = 有真钩子，能区分「在跑 / 等你回答 / 这一轮结束」
+            # inferred = 只靠日志活动推断，只知道「不写了」，绝不允许声称「已完成」
+            $exact = @($sessions | Where-Object { $_.Precision -eq 'exact' })
+            $inferred = @($sessions | Where-Object { $_.Precision -ne 'exact' })
+            $asking = @($exact | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
+            $working = @($exact | Where-Object { $_.State -eq 'working' })
+            $finished = @($exact | Where-Object { $_.State -eq 'waiting' -and $_.Reason -ne 'question' })
             $n = $sessions.Count
 
             $tone = 'normal'
@@ -2548,30 +2559,46 @@ $script:Form.Add_Paint({
             elseif ($working.Count -gt 0) {
                 $picked = ($working | Sort-Object Age -Descending | Select-Object -First 1)
             }
-            else {
+            elseif ($finished.Count -gt 0) {
                 $tone = 'done'
-                $picked = ($sessions | Sort-Object Since -Descending | Select-Object -First 1)
+                $picked = ($finished | Sort-Object Since -Descending | Select-Object -First 1)
             }
+            elseif ($inferred.Count -gt 0) {
+                $tone = 'quiet'
+                $picked = ($inferred | Sort-Object Since -Descending | Select-Object -First 1)
+            }
+            else { return }
+
             $mins = [int][math]::Floor($picked.Age / 60)
             $ago = ''
             if ($mins -lt 1) { $ago = $(if ($isZh) { '刚刚' } else { 'just now' }) }
             elseif ($isZh) { $ago = ($mins.ToString() + ' 分钟') }
             else { $ago = ($mins.ToString() + ' min') }
 
+            # 来源名：产品名不是内容，不违反隐私约定
+            $who = [string]$picked.Source
+            if ([string]::IsNullOrEmpty($who)) { $who = 'Agent' }
+            elseif ($who -eq 'dsh-plugin') { $who = 'DSH' }
+            elseif ($who -eq 'claude-code') { $who = 'Claude' }
+            elseif ($who -eq 'codex') { $who = 'Codex' }
+
             $many = ($n -gt 1)
             if ($tone -eq 'ask') {
-                $txt = $(if ($isZh) { $(if ($many) { "DSH 等你回答 · $n 个对话" } else { 'DSH 等你回答' }) + ' · ' + $ago }
-                         else { $(if ($many) { "DSH needs you · $n chats" } else { 'DSH needs you' }) + ' · ' + $ago })
+                $txt = $(if ($isZh) { $(if ($many) { "$who 等你回答 · $n 个对话" } else { "$who 等你回答" }) + ' · ' + $ago }
+                         else { $(if ($many) { "$who needs you · $n chats" } else { "$who needs you" }) + ' · ' + $ago })
+            }
+            elseif ($tone -eq 'quiet') {
+                # 只知道「不写了」：说最后活动时间，不说「已完成」
+                $txt = $(if ($isZh) { "$who 最后活动 · " + $ago + '前' } else { "$who last active · " + $ago + ' ago' })
             }
             elseif ($tone -eq 'done') {
-                $txt = $(if ($isZh) { $(if ($many) { "DSH 已完成 · $n 个对话" } else { 'DSH 已完成' }) + ' · ' + $ago + '前' }
-                         else { $(if ($many) { "DSH finished · $n chats" } else { 'DSH finished' }) + ' · ' + $ago + ' ago' })
+                $txt = $(if ($isZh) { $(if ($many) { "$who 已完成 · $n 个对话" } else { "$who 已完成" }) + ' · ' + $ago + '前' }
+                         else { $(if ($many) { "$who finished · $n chats" } else { "$who finished" }) + ' · ' + $ago + ' ago' })
             }
             else {
-                $txt = $(if ($isZh) { $(if ($many) { "DSH 正在工作 · $n 个对话" } else { 'DSH 正在工作' }) + ' · 已 ' + $ago }
-                         else { $(if ($many) { "DSH working · $n chats" } else { 'DSH working' }) + ' · ' + $ago })
+                $txt = $(if ($isZh) { $(if ($many) { "$who 正在工作 · $n 个对话" } else { "$who 正在工作" }) + ' · 已 ' + $ago }
+                         else { $(if ($many) { "$who working · $n chats" } else { "$who working" }) + ' · ' + $ago })
             }
-
             $font = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
             $sz = $g.MeasureString($txt, $font)
             $dot = [float](9 * $script:Scale)

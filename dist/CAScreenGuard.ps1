@@ -2502,105 +2502,124 @@ $script:Form.Add_Paint({
             $isZh = ($script:Lang -eq 'zh')
             
             
-            $exact = @($sessions | Where-Object { $_.Precision -eq 'exact' })
-            $inferred = @($sessions | Where-Object { $_.Precision -ne 'exact' })
-            $asking = @($exact | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
-            $working = @($exact | Where-Object { $_.State -eq 'working' })
-            $finished = @($exact | Where-Object { $_.State -eq 'waiting' -and $_.Reason -ne 'question' })
-            $n = $sessions.Count
+            $groups = @($sessions | Group-Object -Property Source)
+            $rows = New-Object System.Collections.ArrayList
+            foreach ($grp in $groups) {
+                $items = @($grp.Group)
+                $who = [string]$grp.Name
+                if ([string]::IsNullOrEmpty($who)) { $who = 'Agent' }
+                elseif ($who -eq 'dsh-plugin') { $who = 'DSH' }
+                elseif ($who -eq 'claude-code') { $who = 'Claude' }
+                elseif ($who -eq 'codex') { $who = 'Codex' }
+                elseif ($who -eq 'codebuddy') { $who = 'CodeBuddy' }
 
-            $tone = 'normal'
-            if ($asking.Count -gt 0) {
-                $tone = 'ask'
-                $picked = ($asking | Sort-Object Age -Descending | Select-Object -First 1)
-            }
-            elseif ($working.Count -gt 0) {
-                $picked = ($working | Sort-Object Age -Descending | Select-Object -First 1)
-            }
-            elseif ($finished.Count -gt 0) {
-                $tone = 'done'
-                $picked = ($finished | Sort-Object Since -Descending | Select-Object -First 1)
-            }
-            elseif ($inferred.Count -gt 0) {
-                $tone = 'quiet'
-                $picked = ($inferred | Sort-Object Since -Descending | Select-Object -First 1)
-            }
-            else { return }
+                $ex = @($items | Where-Object { $_.Precision -eq 'exact' })
+                $asking = @($ex | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
+                $working = @($ex | Where-Object { $_.State -eq 'working' })
+                $finished = @($ex | Where-Object { $_.State -eq 'waiting' -and $_.Reason -ne 'question' })
+                $inf = @($items | Where-Object { $_.Precision -ne 'exact' })
+                $n = $items.Count
 
-            $mins = [int][math]::Floor($picked.Age / 60)
-            $ago = ''
-            if ($mins -lt 1) { $ago = $(if ($isZh) { '刚刚' } else { 'just now' }) }
-            elseif ($isZh) { $ago = ($mins.ToString() + ' 分钟') }
-            else { $ago = ($mins.ToString() + ' min') }
+                $tone = 'normal'; $picked = $null
+                if ($asking.Count -gt 0) {
+                    $tone = 'ask'
+                    $picked = ($asking | Sort-Object Age -Descending | Select-Object -First 1)
+                }
+                elseif ($working.Count -gt 0) {
+                    $picked = ($working | Sort-Object Age -Descending | Select-Object -First 1)
+                }
+                elseif ($finished.Count -gt 0) {
+                    $tone = 'done'
+                    $picked = ($finished | Sort-Object Since -Descending | Select-Object -First 1)
+                }
+                elseif ($inf.Count -gt 0) {
+                    $tone = 'quiet'
+                    $picked = ($inf | Sort-Object Since -Descending | Select-Object -First 1)
+                }
+                else { continue }
 
-            
-            $who = [string]$picked.Source
-            if ([string]::IsNullOrEmpty($who)) { $who = 'Agent' }
-            elseif ($who -eq 'dsh-plugin') { $who = 'DSH' }
-            elseif ($who -eq 'claude-code') { $who = 'Claude' }
-            elseif ($who -eq 'codex') { $who = 'Codex' }
+                $mins = [int][math]::Floor($picked.Age / 60)
+                if ($mins -lt 1) { $ago = $(if ($isZh) { '刚刚' } else { 'just now' }) }
+                elseif ($isZh) { $ago = ($mins.ToString() + ' 分钟') }
+                else { $ago = ($mins.ToString() + ' min') }
 
-            $many = ($n -gt 1)
-            if ($tone -eq 'ask') {
-                $txt = $(if ($isZh) { $(if ($many) { "$who 等你回答 · $n 个对话" } else { "$who 等你回答" }) + ' · ' + $ago }
-                         else { $(if ($many) { "$who needs you · $n chats" } else { "$who needs you" }) + ' · ' + $ago })
-            }
-            elseif ($tone -eq 'quiet') {
-                
-                $txt = $(if ($isZh) { "$who 最后活动 · " + $ago + '前' } else { "$who last active · " + $ago + ' ago' })
-            }
-            elseif ($tone -eq 'done') {
-                $txt = $(if ($isZh) { $(if ($many) { "$who 已完成 · $n 个对话" } else { "$who 已完成" }) + ' · ' + $ago + '前' }
-                         else { $(if ($many) { "$who finished · $n chats" } else { "$who finished" }) + ' · ' + $ago + ' ago' })
-            }
-            else {
-                $txt = $(if ($isZh) { $(if ($many) { "$who 正在工作 · $n 个对话" } else { "$who 正在工作" }) + ' · 已 ' + $ago }
-                         else { $(if ($many) { "$who working · $n chats" } else { "$who working" }) + ' · ' + $ago })
-            }
-            $font = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
-            $sz = $g.MeasureString($txt, $font)
-            $dot = [float](9 * $script:Scale)
-            $padX = [float](14 * $script:Scale)
-            $padY = [float](7 * $script:Scale)
-            $gap = [float](8 * $script:Scale)
-            $chipH = [float]($sz.Height + $padY * 2)
-            $chipW = [float]($padX * 2 + $dot + $gap + $sz.Width)
-            $chipX = [float]$script:EdgeX
-            $chipY = [float]$script:EdgeY
+                $many = ($n -gt 1)
+                if ($tone -eq 'ask') {
+                    $txt = $(if ($isZh) { $(if ($many) { "$who 等你回答 · $n 个对话" } else { "$who 等你回答" }) + ' · ' + $ago }
+                             else { $(if ($many) { "$who needs you · $n chats" } else { "$who needs you" }) + ' · ' + $ago })
+                }
+                elseif ($tone -eq 'quiet') {
+                    
+                    $txt = $(if ($isZh) { "$who 最后活动 · " + $ago + '前' } else { "$who last active · " + $ago + ' ago' })
+                }
+                elseif ($tone -eq 'done') {
+                    $txt = $(if ($isZh) { $(if ($many) { "$who 已完成 · $n 个对话" } else { "$who 已完成" }) + ' · ' + $ago + '前' }
+                             else { $(if ($many) { "$who finished · $n chats" } else { "$who finished" }) + ' · ' + $ago + ' ago' })
+                }
+                else {
+                    $txt = $(if ($isZh) { $(if ($many) { "$who 正在工作 · $n 个对话" } else { "$who 正在工作" }) + ' · 已 ' + $ago }
+                             else { $(if ($many) { "$who working · $n chats" } else { "$who working" }) + ' · ' + $ago })
+                }
 
-            $plateColor = [System.Drawing.Color]::FromArgb(44, 24, 26, 30)
-            $ink = [System.Drawing.Color]::FromArgb(236, 240, 245)
-            $dotColor = [System.Drawing.Color]::FromArgb(120, 220, 150)
-            if ($tone -eq 'ask') {
-                $plateColor = [System.Drawing.Color]::FromArgb(96, 122, 86, 26)
-                $dotColor = [System.Drawing.Color]::FromArgb(255, 196, 92)
-                $ink = [System.Drawing.Color]::FromArgb(255, 226, 168)
+                $wgt = 1
+                if ($tone -eq 'ask') { $wgt = 0 }
+                elseif ($tone -eq 'done') { $wgt = 2 }
+                [void]$rows.Add([pscustomobject]@{ Tone = $tone; Txt = $txt; Weight = $wgt })
             }
-            elseif ($tone -eq 'done') {
-                $dotColor = [System.Drawing.Color]::FromArgb(130, 138, 148)
-                $ink = [System.Drawing.Color]::FromArgb(168, 176, 186)
+            if ($rows.Count -eq 0) { return }
+            $rows = @($rows | Sort-Object Weight)
+            if ($rows.Count -gt 4) { $rows = @($rows[0..3]) }   
+
+            $idx = 0
+            foreach ($r in $rows) {
+                $txt = $r.Txt
+                $font = New-Object System.Drawing.Font($script:UiFamily, [float]$script:PowerPt)
+                $sz = $g.MeasureString($txt, $font)
+                $dot = [float](9 * $script:Scale)
+                $padX = [float](14 * $script:Scale)
+                $padY = [float](7 * $script:Scale)
+                $gap = [float](8 * $script:Scale)
+                $chipH = [float]($sz.Height + $padY * 2)
+                $chipW = [float]($padX * 2 + $dot + $gap + $sz.Width)
+                $chipX = [float]$script:EdgeX
+                $chipY = [float]($script:EdgeY + $idx * ($chipH + [float](6 * $script:Scale)))
+
+                $plateColor = [System.Drawing.Color]::FromArgb(44, 24, 26, 30)
+                $ink = [System.Drawing.Color]::FromArgb(236, 240, 245)
+                $dotColor = [System.Drawing.Color]::FromArgb(120, 220, 150)
+                if ($r.Tone -eq 'ask') {
+                    $plateColor = [System.Drawing.Color]::FromArgb(96, 122, 86, 26)
+                    $dotColor = [System.Drawing.Color]::FromArgb(255, 196, 92)
+                    $ink = [System.Drawing.Color]::FromArgb(255, 226, 168)
+                }
+                elseif ($r.Tone -eq 'done' -or $r.Tone -eq 'quiet') {
+                    $dotColor = [System.Drawing.Color]::FromArgb(130, 138, 148)
+                    $ink = [System.Drawing.Color]::FromArgb(168, 176, 186)
+                }
+
+                $chipR = [float][math]::Min($chipH / 2, 10 * $script:Scale)
+                $path = New-RoundedPath $chipX $chipY $chipW $chipH $chipR
+                $plate = New-Object System.Drawing.SolidBrush $plateColor
+                $g.FillPath($plate, $path)
+                $plate.Dispose()
+                $ring = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(38, 236, 240, 245)), ([float][math]::Max(1, $script:Scale * 0.8))
+                $g.DrawPath($ring, $path)
+                $ring.Dispose()
+                $path.Dispose()
+
+                $dr = [float]($dot / 2)
+                $dcx = [float]($chipX + $padX + $dr)
+                $dcy = [float]($chipY + $chipH / 2)
+                $db = New-Object System.Drawing.SolidBrush $dotColor
+                $g.FillEllipse($db, ($dcx - $dr), ($dcy - $dr), $dot, $dot)
+                $db.Dispose()
+
+                $tb = New-Object System.Drawing.SolidBrush $ink
+                $g.DrawString($txt, $font, $tb, [float]($chipX + $padX + $dot + $gap), [float]($chipY + $padY - 1))
+                $tb.Dispose(); $font.Dispose()
+                $idx++
             }
 
-            $chipR = [float][math]::Min($chipH / 2, 10 * $script:Scale)
-            $path = New-RoundedPath $chipX $chipY $chipW $chipH $chipR
-            $plate = New-Object System.Drawing.SolidBrush $plateColor
-            $g.FillPath($plate, $path)
-            $plate.Dispose()
-            $ring = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(38, 236, 240, 245)), ([float][math]::Max(1, $script:Scale * 0.8))
-            $g.DrawPath($ring, $path)
-            $ring.Dispose()
-            $path.Dispose()
-
-            $dr = [float]($dot / 2)
-            $dcx = [float]($chipX + $padX + $dr)
-            $dcy = [float]($chipY + $chipH / 2)
-            $db = New-Object System.Drawing.SolidBrush $dotColor
-            $g.FillEllipse($db, ($dcx - $dr), ($dcy - $dr), $dot, $dot)
-            $db.Dispose()
-
-            $tb = New-Object System.Drawing.SolidBrush $ink
-            $g.DrawString($txt, $font, $tb, [float]($chipX + $padX + $dot + $gap), [float]($chipY + $padY - 1))
-            $tb.Dispose(); $font.Dispose()
         } catch { }
     })
 

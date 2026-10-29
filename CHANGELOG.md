@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -28,6 +28,16 @@ and versioning adheres to [Semantic Versioning](https://semver.org/).
   waiting for you. That file holds state only, no conversation content.
 - Fixed clipped text: the welcome-page blurb outgrew its box in the previous version (English needs one
   line more than Chinese), so both languages were re-measured and the layout re-spaced.
+### Lock screen: one row per source
+
+- With several harnesses working at once, each source gets its own row (`DSH`, `Codex`, `CodeBuddy`, ...),
+  ordered by urgency: waiting-for-you on top, working next; past 4 rows only the most urgent remain.
+- CodeBuddy, measured: while it runs, the only file under `~\.codebuddy\` that keeps changing is the
+  plugin-marketplace check, fixed every 60 seconds and unrelated to agent activity; conversation files
+  are never written, and `settings.json` has no hook entries. A watcher on that heartbeat would report
+  "working" whenever the app is merely open, so it is not wired up by default.
+- `docs/bridge.md` records this finding and the per-harness templates.
+
 ## [3.1.0] — 2026-10-28
 
 ### Any agent harness can report its state

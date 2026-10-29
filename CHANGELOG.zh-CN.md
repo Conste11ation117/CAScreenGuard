@@ -4,7 +4,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [3.2.0] — 2026-10-29
+## [3.1.1] — 2026-10-29 Sonnet
 
 ### 仓库结构
 

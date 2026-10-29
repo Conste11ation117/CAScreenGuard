@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.2.0] — 2026-10-29
+## [3.1.1] — 2026-10-29 Sonnet
 
 ### Repository layout
 

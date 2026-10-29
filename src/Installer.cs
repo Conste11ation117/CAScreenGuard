@@ -97,7 +97,7 @@ public static class Str
         { "k93", "升级失败：" },
         { "k94", "\n\n为保护现有凭据，本次没有做任何修改。要重装的话，请先在「设置 → 应用」里卸载 CAScreenGuard。" },
         { "k68", "CAScreenGuard 只关显示器（不休眠、不锁会话、保持系统唤醒），在最上层盖一层全屏遮罩挡住桌面内容；输对解锁密码才会恢复。它是视觉遮挡，不是安全边界，详见 README。\n\n获取新版本：github.com/Conste11ation117/CAScreenGuard/releases" },
-        { "k96", "可选：如果你用 DeepSeek Harness，建议装上配套插件 dsh-get-session-status（npm 上有）。锁屏左上角会显示 agent 是在跑还是在等你；那份文件只有状态，不含对话内容。不装不影响本程序。" },
+        { "k96", "可选：DeepSeek Harness用户安装插件：dsh-get-session-status可获得本软件的完整体验：锁屏左上角会显示 agent 是在跑还是在等你。" },
         { "k69", "欢迎" },
         { "k70", "上一页" },
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
@@ -194,7 +194,7 @@ public static class Str
         { "k93", "Upgrade failed: " },
         { "k94", "\n\nNothing was modified this time, to protect the existing credentials. To reinstall, uninstall CAScreenGuard from Settings > Apps first." },
         { "k68", "CAScreenGuard turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask; only the unlock password brings it back. It is a visual barrier, not a security boundary. See the README.\n\nNew versions: github.com/Conste11ation117/CAScreenGuard/releases" },
-        { "k96", "Optional: if you use DeepSeek Harness, install the companion plugin dsh-get-session-status (on npm). The lock screen then shows whether the agent is working or waiting for you - state only, no conversation content. Nothing else depends on it." },
+        { "k96", "Optional: DeepSeek Harness users can install the plugin dsh-get-session-status for the complete experience - the lock screen then shows whether the agent is working or waiting for you." },
         { "k69", "Welcome" },
         { "k70", "Back" },
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
@@ -238,7 +238,7 @@ public class CAScreenGuardInstaller
     internal const string LicenseLeaf = "LICENSE";
     internal const string LnkLeaf = "CAScreenGuard.lnk";
     internal const string AppName = "CAScreenGuard";
-    internal const string AppVersion = "V3.2.0";
+    internal const string AppVersion = "V3.1.1";
     const string CfgLeaf = ".cascreenguard.config.json";
     const string StoreKey = @"Software\CAScreenGuard";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CAScreenGuard";

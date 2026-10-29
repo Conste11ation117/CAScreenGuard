@@ -1,4 +1,4 @@
-# CAScreenGuard
+﻿# CAScreenGuard
 
 **English** · [简体中文](README.zh-CN.md)
 
@@ -18,7 +18,7 @@ The mask is backed by your own desktop wallpaper, dimmed and stretched over the 
 time and date above the card laid out to Windows 11's lock-screen proportions. When the wallpaper cannot
 be read it falls back to plain black. Your desktop never shows through.
 
-- Version: **V3.2.0**
+- Version: **V3.1.1**
 - Author: **@Conste11ation117**
 - Requirements: Windows 10 / 11 with Windows PowerShell 5.1 (built in; nothing to install)
 - License: [MIT](LICENSE)

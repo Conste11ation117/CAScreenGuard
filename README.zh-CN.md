@@ -1,4 +1,4 @@
-# CAScreenGuard
+﻿# CAScreenGuard
 
 [English](README.md) · **简体中文**
 
@@ -15,7 +15,7 @@
 遮罩以你自己的桌面壁纸打底并压暗，上方按 Windows 11 锁屏的比例显示时间与日期，中间是解锁密码卡片。
 读不到壁纸时退回纯黑。桌面内容全程不会露出。
 
-- 版本：V3.2.0
+- 版本：V3.1.1
 - 作者：@Conste11ation117
 - 运行环境：Windows 10 / 11，Windows PowerShell 5.1（系统自带，不需要装任何东西）
 - 许可：[MIT](LICENSE)

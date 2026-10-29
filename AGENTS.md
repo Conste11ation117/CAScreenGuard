@@ -1,4 +1,4 @@
-﻿# 给在本仓库工作的 agent 的说明
+# 给在本仓库工作的 agent 的说明
 
 ## 一、绝对不要改的文字：元定位声明（元指令）
 
@@ -31,13 +31,20 @@ WorkBuddy 等）同样由作者维护：要增减名字先问作者，不要自�
 
 ## 二、本仓库的硬性约定
 
+目录分工：`src\` 是手写源码，`dist\` 是构建产物，`tools\` 是构建与生成脚本，`docs\` 是文档与截图。
+**要改行为就改 `src\`，永远不要手改 `dist\` 里的东西。**
+
 - `.ps1` / `.cs` 必须是 **UTF-8 BOM + CRLF**。编辑工具可能会把 BOM 吃掉，改完务必检查；
-  `build-setup.ps1` 会自动补回它处理的那几份源文件（`build-setup.ps1` 自己、workflow 等不在名单里，
-  需要手工补）。
-- `CAScreenGuard.ps1` 是 `CAScreenGuard-demo.ps1` 经构建脚本生成的**产物，不要手改**。
-  改行为请改 `CAScreenGuard-demo.ps1`，然后运行构建脚本重新生成。
-- 改完必须验证：`powershell -File build-setup.ps1`，
-  再 `powershell -File CAScreenGuard-demo.ps1 -SelfTest`（应 **8/8** 通过），并确认 BOM/CRLF。
+  `tools\build-setup.ps1` 会自动补回它处理的那几份源文件（它自己、workflow 等不在名单里，需要手工补）。
+  用 `write` 一类工具落地时默认是无 BOM + LF，写完要么补 BOM 要么走一遍构建。
+- `dist\CAScreenGuard.ps1` 是 `src\CAScreenGuard.ps1` 经构建脚本生成的**产物，不要手改**。
+  改行为请改 `src\CAScreenGuard.ps1`，然后运行构建脚本重新生成。
+- 改完必须验证：`powershell -File tools\build-setup.ps1`，
+  再 `powershell -File src\CAScreenGuard.ps1 -SelfTest`（应 **8/8** 通过），并确认 BOM/CRLF。
+- 界面上加控件之前**先量文字高度**：欢迎页曾经因为文案变长把后半句裁掉，而且中文比英文矮，
+  只量一种语言照样会裁。用 `Graphics.MeasureString(文字, 字体, 框宽)` 按中英文各量一遍。
+- 往长文件里插代码时，先确认锚点**只出现一次**（`[regex]::Matches(...).Count`），出现两次就会插两遍；
+  插完立刻做语法解析检查，别等构建才发现。
 - **新增任何受版本控制的文件，必须同时加进 `.github/workflows/release.yml` 里的 `FILES` 清单**，
   否则发版 CI 会在打包清单校验那一步失败。同理，不要指望清单会自己跟着 `git ls-files` 走。
 - 发版：推一个 `v*` 标签就会触发 CI —— 在标签指向的提交上现打两个 zip、从 `CHANGELOG.md` 的版本标题

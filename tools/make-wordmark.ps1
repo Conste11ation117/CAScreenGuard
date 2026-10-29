@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
-if (-not $OutFile) { $OutFile = Join-Path $PSScriptRoot 'CAScreenGuard-wordmark.png' }
+if (-not $OutFile) { $OutFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\assets\CAScreenGuard-wordmark.png' }
 if (-not (Test-Path -LiteralPath $FontPath)) {
     throw ('找不到字体文件：' + $FontPath + '。可以从 JetBrains 官网下载 JetBrains Mono（OFL 许可）后指定 -FontPath。')
 }
@@ -45,5 +45,5 @@ $bmp.Save($OutFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $bmp.Dispose()
 
 Write-Host ('已生成 ' + $OutFile + '  ' + $w + 'x' + $h + '，字体族：' + $fam.Name)
-Write-Host '把它换成 base64 填进 CAScreenGuard-demo.ps1 的 $script:WordmarkB64（分片写，每行 96 字符即可）：'
+Write-Host '把它换成 base64 填进 src\CAScreenGuard.ps1 的 $script:WordmarkB64（分片写，每行 96 字符即可）：'
 Write-Host ('  ' + [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($OutFile)).Substring(0, 32) + '...')

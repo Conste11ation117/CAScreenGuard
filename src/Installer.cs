@@ -95,7 +95,9 @@ public static class Str
         { "k91", "\n\n解锁密码与授权码保持不变。" },
         { "k92", "旧版本" },
         { "k93", "升级失败：" },
-        { "k94", "\n\n为保护现有凭据，本次没有做任何修改。要重装的话，请先在「设置 → 应用」里卸载 CAScreenGuard。" },        { "k68", "CAScreenGuard 会在你离开时替你看着屏幕：只关显示器（不休眠、不锁定 Windows 会话、保持系统唤醒），最上层盖一层全屏黑幕挡住桌面内容，只有输对解锁密码才会恢复。它不是安全边界，只防「路过的人随手看一眼」，详细说明见 README。\n\n获取新版本：github.com/Conste11ation117/CAScreenGuard/releases" },
+        { "k94", "\n\n为保护现有凭据，本次没有做任何修改。要重装的话，请先在「设置 → 应用」里卸载 CAScreenGuard。" },
+        { "k68", "CAScreenGuard 只关显示器（不休眠、不锁会话、保持系统唤醒），在最上层盖一层全屏遮罩挡住桌面内容；输对解锁密码才会恢复。它是视觉遮挡，不是安全边界，详见 README。\n\n获取新版本：github.com/Conste11ation117/CAScreenGuard/releases" },
+        { "k96", "可选：如果你用 DeepSeek Harness，建议装上配套插件 dsh-get-session-status（npm 上有）。锁屏左上角会显示 agent 是在跑还是在等你；那份文件只有状态，不含对话内容。不装不影响本程序。" },
         { "k69", "欢迎" },
         { "k70", "上一页" },
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
@@ -190,7 +192,9 @@ public static class Str
         { "k91", "\n\nThe unlock password and authorization code are unchanged." },
         { "k92", "an older version" },
         { "k93", "Upgrade failed: " },
-        { "k94", "\n\nNothing was modified this time, to protect the existing credentials. To reinstall, uninstall CAScreenGuard from Settings > Apps first." },        { "k68", "CAScreenGuard watches the screen while you are away: it turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask. Only the unlock password brings it back. It is not a security boundary — it stops a passer-by from glancing at your screen. See the README for details.\n\nNew versions: github.com/Conste11ation117/CAScreenGuard/releases" },
+        { "k94", "\n\nNothing was modified this time, to protect the existing credentials. To reinstall, uninstall CAScreenGuard from Settings > Apps first." },
+        { "k68", "CAScreenGuard turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask; only the unlock password brings it back. It is a visual barrier, not a security boundary. See the README.\n\nNew versions: github.com/Conste11ation117/CAScreenGuard/releases" },
+        { "k96", "Optional: if you use DeepSeek Harness, install the companion plugin dsh-get-session-status (on npm). The lock screen then shows whether the agent is working or waiting for you - state only, no conversation content. Nothing else depends on it." },
         { "k69", "Welcome" },
         { "k70", "Back" },
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
@@ -234,7 +238,7 @@ public class CAScreenGuardInstaller
     internal const string LicenseLeaf = "LICENSE";
     internal const string LnkLeaf = "CAScreenGuard.lnk";
     internal const string AppName = "CAScreenGuard";
-    internal const string AppVersion = "V3.1.0";
+    internal const string AppVersion = "V3.2.0";
     const string CfgLeaf = ".cascreenguard.config.json";
     const string StoreKey = @"Software\CAScreenGuard";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CAScreenGuard";
@@ -1119,7 +1123,7 @@ public class SetupForm : Form
 
     Panel pageWelcome, pageInstall;
     ComboBox cboLang;
-    Label lblWelcome, lblAuthor, lblIntro, lblAv, lblLang;
+    Label lblWelcome, lblAuthor, lblIntro, lblPlugin, lblAv, lblLang;
     LinkLabel lnkReadme;
     TextBox txtDir, txtPwd, txtPwd2, txtAuth, txtAuth2, txtHint, txtHotkey;
     CheckBox chkLink;
@@ -1402,17 +1406,27 @@ public class SetupForm : Form
         lblIntro.Font = new Font(UIFont, 9F, FontStyle.Regular, GraphicsUnit.Point);
         lblIntro.ForeColor = Color.FromArgb(58, 66, 80);
         lblIntro.TextAlign = ContentAlignment.TopLeft;
-        lblIntro.Location = new Point(S(30), S(120));
-        lblIntro.Size = new Size(S(500), S(62));
+        lblIntro.Location = new Point(S(30), S(118));
+        lblIntro.Size = new Size(S(500), S(80));
         pageWelcome.Controls.Add(lblIntro);
+
+        // 配套插件提示：只有首次安装会看到这个页面（升级走另一条路，不进向导）
+        lblPlugin = new Label();
+        lblPlugin.AutoSize = false;
+        lblPlugin.Font = new Font(UIFont, 8.5F, FontStyle.Regular, GraphicsUnit.Point);
+        lblPlugin.ForeColor = Color.FromArgb(70, 78, 92);
+        lblPlugin.TextAlign = ContentAlignment.TopLeft;
+        lblPlugin.Location = new Point(S(30), S(202));
+        lblPlugin.Size = new Size(S(500), S(48));
+        pageWelcome.Controls.Add(lblPlugin);
 
         lblAv = new Label();
         lblAv.AutoSize = false;
         lblAv.Font = new Font(UIFont, 8.5F, FontStyle.Regular, GraphicsUnit.Point);
         lblAv.ForeColor = Color.FromArgb(96, 100, 108);   // 正常颜色，不做警告红
         lblAv.TextAlign = ContentAlignment.TopLeft;
-        lblAv.Location = new Point(S(30), S(190));
-        lblAv.Size = new Size(S(500), S(64));
+        lblAv.Location = new Point(S(30), S(254));
+        lblAv.Size = new Size(S(500), S(62));
         pageWelcome.Controls.Add(lblAv);
 
         lnkReadme = new LinkLabel();
@@ -1420,7 +1434,7 @@ public class SetupForm : Form
         lnkReadme.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
         lnkReadme.LinkColor = Color.FromArgb(0, 102, 204);
         lnkReadme.TextAlign = ContentAlignment.MiddleLeft;
-        lnkReadme.Location = new Point(S(30), S(254));
+        lnkReadme.Location = new Point(S(30), S(320));
         lnkReadme.Size = new Size(S(500), S(26));
         lnkReadme.LinkClicked += new LinkLabelLinkClickedEventHandler(OnReadme);
         pageWelcome.Controls.Add(lnkReadme);
@@ -1430,14 +1444,14 @@ public class SetupForm : Form
         lblLang.Font = new Font(UIFont, 9F, FontStyle.Regular, GraphicsUnit.Point);
         lblLang.ForeColor = Color.FromArgb(70, 78, 92);
         lblLang.TextAlign = ContentAlignment.MiddleLeft;
-        lblLang.Location = new Point(S(30), S(292));
+        lblLang.Location = new Point(S(30), S(350));
         lblLang.Size = new Size(S(100), S(26));
         pageWelcome.Controls.Add(lblLang);
 
         cboLang = new ComboBox();
         cboLang.DropDownStyle = ComboBoxStyle.DropDownList;
         cboLang.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
-        cboLang.Location = new Point(S(146), S(292));
+        cboLang.Location = new Point(S(146), S(350));
         cboLang.Size = new Size(S(150), S(26));
         cboLang.Items.Add("简体中文");
         cboLang.Items.Add("English");
@@ -1448,7 +1462,7 @@ public class SetupForm : Form
         Button btnNext = new Button();
         btnNext.Name = "btnNext";
         btnNext.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
-        btnNext.Location = new Point(S(352), S(292));
+        btnNext.Location = new Point(S(352), S(350));
         btnNext.Size = new Size(S(88), S(30));
         btnNext.Click += new EventHandler(OnNext);
         pageWelcome.Controls.Add(btnNext);
@@ -1460,7 +1474,7 @@ public class SetupForm : Form
         // 这个窗体是 Application.Run 打开的（非模态），只设 DialogResult 不会关窗，
         // 必须自己挂 Click —— 和当初安装页那个「取消」是同一个坑
         btnQuit.Click += new EventHandler(OnCancel);
-        btnQuit.Location = new Point(S(448), S(292));
+        btnQuit.Location = new Point(S(448), S(350));
         btnQuit.Size = new Size(S(84), S(30));
         pageWelcome.Controls.Add(btnQuit);
     }
@@ -1469,7 +1483,7 @@ public class SetupForm : Form
     {
         pageWelcome.Visible = !install;
         pageInstall.Visible = install;
-        ClientSize = install ? new Size(S(560), S(620)) : new Size(S(560), S(352));
+        ClientSize = install ? new Size(S(560), S(620)) : new Size(S(560), S(404));
         if (install) { AcceptButton = btnInstall; CancelButton = null; }
         else { AcceptButton = FindButton("btnNext", pageWelcome); CancelButton = FindButton("btnQuit", pageWelcome); }
     }
@@ -1497,6 +1511,7 @@ public class SetupForm : Form
         lblWelcome.Text = Str.S("k69");
         lblAuthor.Text = "@Conste11ation117　·　CAScreenGuard " + CAScreenGuardInstaller.AppVersion + "　·　MIT License";
         lblIntro.Text = Str.S("k68");
+        lblPlugin.Text = Str.S("k96");
         lblAv.Text = Str.S("k64");
         lnkReadme.Text = Str.S("k65");
         lblLang.Text = Str.S("k66");

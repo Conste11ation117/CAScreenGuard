@@ -7,9 +7,9 @@
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
-$root = $PSScriptRoot
+$root = Split-Path -Parent $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
-$out = Join-Path $root 'CAScreenGuard.ico'
+$out = Join-Path (Join-Path $root 'src\assets') 'CAScreenGuard.ico'
 $tmp = $env:TEMP
 
 $COLOR_BACK  = [System.Drawing.Color]::FromArgb(255, 47, 168, 248)    # 青蓝

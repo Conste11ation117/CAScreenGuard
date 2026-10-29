@@ -1,33 +1,37 @@
 ﻿#CAScreenGuard builder by Conste11ation117
 # 打包脚本：把「主脚本 + 两个 C# 源文件 + 图标」嵌进安装器，编译成单文件、无控制台、带图标的 exe
 #
-# 源（要读、要改的是这几份，都带注释）：
-#   CAScreenGuard-demo.ps1   主脚本
-#   ScreenLockEarly.cs       原生调用：DPI 感知 / 隐藏控制台
-#   ScreenLockNative.cs      原生调用：关屏 / 键盘钩子 / 置顶 / 空闲计时
-#   CAScreenGuard.ico        图标
-#   Installer.cs             安装器自己的 C#
+# 源（src\，带注释，要改就是改这些）：
+#   src\CAScreenGuard.ps1        主脚本
+#   src\ScreenLockEarly.cs       原生调用：DPI 感知 / 隐藏控制台
+#   src\ScreenLockNative.cs      原生调用：关屏 / 键盘钩子 / 置顶 / 空闲计时
+#   src\assets\CAScreenGuard.ico 图标
+#   src\Installer.cs             安装器自己的 C#
 #
-# 产物：
-#   CAScreenGuard.ps1        由 demo 自动生成：去掉所有注释和空行（发布版；打包用的是它）
-#   CAScreenGuard-Setup.exe  安装器
+# 产物（dist\，由本脚本生成，不要手改）：
+#   dist\CAScreenGuard.ps1        去注释后的发布版主脚本（打包用的就是它）
+#   dist\CAScreenGuard-Setup.exe  安装器
 #
-# 用法：powershell -File build-setup.ps1
+# 用法：powershell -File tools\build-setup.ps1
 
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
-if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$tools = $PSScriptRoot
+if (-not $tools) { $tools = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$root = Split-Path -Parent $tools          # 本脚本在 tools\ 下，仓库根在上一层
+$srcDir = Join-Path $root 'src'
+$distDir = Join-Path $root 'dist'
 $leaf = 'CAScreenGuard'
 $utf8bom = New-Object System.Text.UTF8Encoding($true)
 
-$demoPath = Join-Path $root ($leaf + '-demo.ps1')
-$ps1Path = Join-Path $root ($leaf + '.ps1')
-$icoPath = Join-Path $root ($leaf + '.ico')
-$earlyPath = Join-Path $root 'ScreenLockEarly.cs'
-$nativePath = Join-Path $root 'ScreenLockNative.cs'
-$instCsPath = Join-Path $root 'Installer.cs'
+$demoPath = Join-Path $srcDir ($leaf + '.ps1')
+$ps1Path = Join-Path $distDir ($leaf + '.ps1')
+$icoPath = Join-Path $srcDir ('assets\' + $leaf + '.ico')
+$earlyPath = Join-Path $srcDir 'ScreenLockEarly.cs'
+$nativePath = Join-Path $srcDir 'ScreenLockNative.cs'
+$instCsPath = Join-Path $srcDir 'Installer.cs'
 $licensePath = Join-Path $root 'LICENSE'
-$outExe = Join-Path $root ($leaf + '-Setup.exe')
+$outExe = Join-Path $distDir ($leaf + '-Setup.exe')
+if (-not (Test-Path -LiteralPath $distDir)) { $null = New-Item -ItemType Directory -Path $distDir -Force }
 
 foreach ($f in @($demoPath, $icoPath, $earlyPath, $nativePath, $instCsPath, $licensePath)) {
     if (-not (Test-Path -LiteralPath $f)) { throw ('缺少源文件：' + $f) }

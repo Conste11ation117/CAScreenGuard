@@ -1,7 +1,11 @@
-﻿# 中间产物
+# 中间产物
 obj/
-dist/
 chk.dll
+
+# dist\ 里只提交两个产物（用户就是照它们装的），其余都不进库
+dist/*
+!dist/CAScreenGuard.ps1
+!dist/CAScreenGuard-Setup.exe
 
 # 压缩包
 *.zip

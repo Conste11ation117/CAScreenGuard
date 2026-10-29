@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.2.0] — 2026-10-29
+
+### Repository layout
+
+- Reorganised into `src` / `dist` / `tools` / `docs`: hand-written sources under `src\`
+  (`CAScreenGuard-demo.ps1` is now `src\CAScreenGuard.ps1`), build output under `dist\`, build and
+  generator scripts under `tools\`, documentation and screenshots under `docs\`; the bridge scripts moved
+  to `src\bridge\` and their notes to `docs\bridge.md`.
+- `.gitignore` now ships only the two `dist\` artifacts; every other generated file stays out.
+- The build script and the release packaging list follow the new paths.
+
+### Documentation
+
+- Both READMEs, SECURITY and the bridge notes rewritten: filler and marketing phrasing removed, facts
+  kept. Added the parts never documented before - the top-left status chip, in-place upgrade, the
+  precision tiers. SECURITY's supported version corrected from 1.0.x to 3.x.
+
+### Installer
+
+- The welcome page now carries one optional suggestion: if you use DeepSeek Harness, install the
+  companion plugin `dsh-get-session-status` so the lock screen can show whether the agent is working or
+  waiting for you. That file holds state only, no conversation content.
+- Fixed clipped text: the welcome-page blurb outgrew its box in the previous version (English needs one
+  line more than Chinese), so both languages were re-measured and the layout re-spaced.
 ## [3.1.0] — 2026-10-28
 
 ### Any agent harness can report its state

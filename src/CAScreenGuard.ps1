@@ -1,28 +1,70 @@
 ﻿#Requires -Version 5.1
+<#
+  CAScreenGuard by Conste11ation117
+  ==========================================================================
+  它做什么：运行后立刻关闭显示器（只关屏：不休眠、不锁定、保持系统唤醒），
+            并在最上层盖一层全屏黑色遮罩挡住桌面内容。
+            只有输入正确的解锁密码，才会恢复屏幕并退出本脚本。
 
+  怎么启动：运行安装程序（CAScreenGuard-Setup.exe）装好之后，双击桌面上的「CAScreenGuard」快捷方式即可
+            （不会闪出终端窗口）。解锁密码与授权码都在安装向导里设置。
+
+  文件构成：CAScreenGuard.ps1（本脚本）+ ScreenLockEarly.cs + ScreenLockNative.cs（原生调用的 C# 源码）
+            + CAScreenGuard.ico，四个文件必须放在同一个目录里 —— 脚本运行时会 Add-Type 加载那两个 .cs。
+            安装程序会把这四份一起放进安装目录，不用手工处理。
+
+  熄屏后可以按什么（锁屏界面上也写着）：
+        任意键 / 移动鼠标        → 点亮屏幕、显示密码框（桌面内容始终被遮住）
+        输入解锁密码 + Enter     → 解锁：恢复屏幕并退出
+        Ctrl + Backspace         → 清空已输入内容（Ctrl + U 同效）
+        Esc                      → 立刻再次熄屏（已输入内容会保留）
+        无操作 25 秒             → 自动再次熄屏（已输入内容会保留）
+        Ctrl + Shift + Alt + E   → 打开「修改解锁密码」，需要输入授权码
+
+  密码怎么存：解锁密码与授权码都只保存「加盐哈希」（PBKDF2），不保存明文。
+            配置文件 .cascreenguard.config.json 是隐藏文件，与脚本放在同一目录；
+            同时在注册表和 %APPDATA%\CAScreenGuard 里各存一份「外部凭证」。
+            授权码一经安装定版、不能再改，是「忘记解锁密码」时唯一的凭据；
+            界面上只显示安装时写的「授权码提示」（提示是明文，别把密码本身写进去）。
+
+  配置文件被动过怎么办：配置文件里带一段 HMAC 摘要，密钥在外部凭证里。
+            一旦文件被删除、或者内容被改动，脚本会明确报警并且拒绝直接开锁，
+            要求先用授权码确认身份，再设一个新的解锁密码。
+
+  忘记解锁密码怎么办：按 Ctrl + Shift + Alt + E → 输入授权码 → 设一个新的解锁密码。
+
+  锁屏期间还会吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，免得有人用开始菜单、
+        窗口缩略图、Win+G 看到你的桌面内容；其余按键一律放行。
+
+  命令行选项：-ResetPassword   直接打开「修改解锁密码」（需要当前授权码；这一次不熄屏）
+              -SelfTest        自检：不改动显示器电源，只验证脚本与界面是否正常
+
+  边界说明：本脚本以当前用户权限运行，用来「无人值守时防止别人随手翻看屏幕」。
+            它不锁定 Windows 会话（后台任务照常运行），也不是不可绕过的安全边界。
+#>
 
 [CmdletBinding()]
 param(
-    
+    # 重设解锁密码
     [switch]$ResetPassword,
-    
+    # 熄屏界面多久无人操作后自动再次熄屏（秒）
     [ValidateRange(5, 600)][int]$IdleBlankSeconds = 25,
-    
+    # 自检模式：不改动显示器电源，只验证脚本与界面能否正常工作
     [switch]$SelfTest,
-    
+    # 只显示版本与作者，然后退出
     [switch]$Ver,
-    
+    # 界面语言：auto = 跟随外部凭证里安装时选的，其次跟随系统；也可以强制 zh / en
     [ValidateSet('auto', 'zh', 'en')][string]$Lang = 'auto',
-    
-    
+    # 不装全局键盘钩子：锁屏期间就不再吞 Win / Alt+Tab / Alt+Esc / Ctrl+Esc（遮罩还在）。
+    # 那个钩子是整个会话级的，机器上若有远程控制／自动化／AI 客户端这类程序，可能互相干扰。
     [switch]$NoKeyboardHook
 )
 
 $ErrorActionPreference = 'Stop'
 
-
-
-$script:AppVersion = 'V3.1.0'
+# ------------------------------------------------------------------ 界面语言
+# 显示在所有弹出窗口标题里的版本号
+$script:AppVersion = 'V3.2.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -30,9 +72,9 @@ if ($Ver) {
     exit 0
 }
 
-
-
-
+# 字标「CAScreenGuard」是预渲染好的透明 PNG（JetBrains Mono Bold，生成脚本见 make-wordmark.ps1）。
+# 以 base64 嵌在脚本里：用户机器上不必安装字体，运行时也不用每次重绘都去解析字形 —— 只贴一张图。
+# 分片写是为了 diff 可读；解码前把空白去掉。
 $script:WordmarkB64 = @'
 iVBORw0KGgoAAAANSUhEUgAAAp4AAAB0CAYAAAAsNjJeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAA
 DsMAAA7DAcdvqGQAAB10SURBVHhe7Z0tkGS5sYUNH3zQ0NDQ0PBBw4WGCxcuNFxmONBw4EDDgQMHDjRsaFjTVTWxcF5kSZq+
@@ -143,14 +185,14 @@ IYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEII
 Eh88AAAAAElFTkSuQmCC
 '@
 $script:WordmarkB64 = $script:WordmarkB64 -replace '\s', ''
-
+# 运行时状态：字标位图 / 电量信息 / 最后一次读电量的时间（电量每 10 秒才读一次，别挂在 250ms 的 tick 上）
 $script:WordmarkImg = $null
 $script:PowerInfo = $null
 $script:LastPowerRead = [datetime]::MinValue
-
-
-
-
+# 两种语言的界面文案都在这里，T '键' 取当前语言的文本。
+# 语言优先级：-Lang 参数 > 外部凭证里记的（安装时选的） > 系统界面语言。
+# 注意：脚本作用域里 $script:Lang 和参数 $Lang 是同一个变量，下面一赋值就会把参数冲掉，
+# 所以必须先把参数抄到 $script:LangArg 里存着，否则 -Lang 参数和安装时选的语言都会失效。
 $script:LangArg = [string]$Lang
 $script:Lang = 'zh'
 try {
@@ -297,9 +339,9 @@ function T {
     if ($t -and $t.ContainsKey($Key)) { return $t[$Key] }
     return $script:T['zh'][$Key]
 }
-
-
-
+# ------------------------------------------------------------------ 依赖的 C# 源文件
+# 原生调用写在同目录的两个 .cs 里（ScreenLockEarly.cs / ScreenLockNative.cs）。
+# 安装程序会把「脚本 + 两个 .cs + 图标」一起放进安装目录，所以这里按脚本所在目录找。
 $script:ScriptDir = $PSScriptRoot
 if (-not $script:ScriptDir) {
     try { $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path } catch { }
@@ -322,13 +364,13 @@ if ($missingFiles.Count -gt 0) {
     exit 1
 }
 
-
-
-
-
-
+# ------------------------------------------------------------------ 启动最早期
+# 1) 声明 DPI 感知：不声明的话，在被缩放的屏幕上（例如 175%）整个窗口会被系统位图拉伸，
+#    表现就是"字非常糊"。必须在创建任何窗口之前调用。
+# 2) 隐藏控制台：只有当"这个控制台里只有我们自己一个进程"（= 双击 / 快捷方式启动）时才隐藏；
+#    如果旁边还有父 shell（你是在终端里手动运行），绝不动你的终端。
 if (-not ('ScreenLockEarly' -as [type])) {
-    
+    # 这一步在 trap 定义之前、控制台也可能已被隐藏：编译失败必须弹窗，否则双击就是"什么都没发生"
     try { Add-Type -Path $csEarly }
     catch {
         try {
@@ -351,14 +393,14 @@ try {
 }
 catch { }
 
-
+# ------------------------------------------------------------------ 依赖程序集
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 try { [System.Windows.Forms.Application]::EnableVisualStyles() } catch { }
 
-
+# ------------------------------------------------------------------ 原生调用
 if (-not ('ScreenLockNative' -as [type])) {
-    
+    # 同上：失败要可见，不能静默退出
     try { Add-Type -Path $csNative }
     catch {
         try {
@@ -368,25 +410,25 @@ if (-not ('ScreenLockNative' -as [type])) {
     }
 }
 
-
-
-
-
-
-
+# ==================================================================
+#  运行状态：判断"上一次息屏是不是正常结束的"
+#  锁屏开始时写一个标记文件，解锁退出时删掉它；下次启动如果还看到它，
+#  就说明上一次没走正常退出这条路。崩溃会另外留下日志 ——
+#  有日志 = 软件自己出问题；没日志 = 被人关机 / 注销 / 杀进程 / 断电。
+# ==================================================================
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'CAScreenGuard'
 $script:FlagPath = Join-Path $script:StateDir 'running.flag'
-
-
+# 改屏保设置之前，把系统原来的值落一份盘：进程被强杀/断电时 finally 不会跑，
+# 只存在内存里的"原值"就丢了，下次启动读到的会是被我们改成 0 的那个值 —— 屏保就永久关着。
 $script:PresavePath = Join-Path $script:StateDir 'screen-saver-original.json'
-
-
-
+# guard.log：运行期间"发生了什么"的流水账，专门为了排错（用户会把它发出来）。
+# 所以这里有一条硬规矩：**不写任何可能算隐私的东西** —— 用户名、机器名、路径、PID 都不写。
+# 崩溃日志（crash-*.log / tick-errors.log）是本机的东西，可以写 user@machine、pid；guard.log 不行。
 $script:GuardLogPath = Join-Path $script:StateDir 'guard.log'
-
-
+# 定时器间隔 250ms。两个 tick 之间差出好几秒，说明机器睡过去了（或被饿死）——
+# 这两条时间戳就是用来发现这件事、以及"唤醒请求该不该重发"的。
 $script:LastAwakeTick = [datetime]::MinValue
-$script:StartedAt = Get-Date          
+$script:StartedAt = Get-Date          # guard.log 里算"这次存活多久"用
 $script:LastTickWall = Get-Date
 
 function Get-LastCrashLog {
@@ -406,8 +448,8 @@ function Get-LastCrashLog {
 function New-RunningFlag {
     try {
         if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
-        
-        
+        # 注意：不能写成 @(...) 再用 -join —— PowerShell 里逗号优先级高于加号，
+        # 那几个元素会被加号串成一个字符串（用空格连接），标记文件就成了一整行
         $info = 'started=' + (Get-Date).ToString('s') + "`r`n" +
                 'user=' + $env:USERNAME + "`r`n" +
                 'computer=' + $env:COMPUTERNAME + "`r`n" +
@@ -446,7 +488,7 @@ function Write-CrashLog {
             [void]$sb.AppendLine(($ErrorRecord | Out-String))
         }
         [System.IO.File]::WriteAllText($path, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
-        
+        # 只留最近 10 份，别把状态目录塞满
         Get-ChildItem -LiteralPath $script:StateDir -Filter 'crash-*.log' -File -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -Skip 10 | Remove-Item -Force -ErrorAction SilentlyContinue
         return $path
@@ -454,9 +496,9 @@ function Write-CrashLog {
 }
 
 function Write-TickError {
-    
-    
-    
+    # 定时器里抛的异常：不能弹窗（会打断遮罩上的操作），也不能写进 crash-*.log
+    # （那会被下次启动当成"软件崩了"报警）。单独落一个 tick-errors.log。
+    # 只在"错误内容变了"时写一次，否则 250ms 一条会把盘写满。
     param([string]$Message)
     try {
         if ([string]::IsNullOrEmpty($Message)) { return }
@@ -474,10 +516,10 @@ function Write-TickError {
 }
 
 function Write-GuardLog {
-    
-    
-    
-    
+    # 排错流水账：启动/退出、定时器中断（怀疑睡过去又醒）、唤醒请求重发失败、界面线程异常。
+    # 硬规矩：**不写任何可能算隐私的东西** —— 用户名、机器名、路径、PID 一律不写。
+    # 这个文件是给用户发出来看的（崩溃日志是本机的东西，那边可以写 user@machine、pid）。
+    # 体积上限 64KB：超了截掉前一半只留最近的，免得无限增长。
     param([string]$Message)
     try {
         if ([string]::IsNullOrEmpty($Message)) { return }
@@ -499,7 +541,7 @@ function Write-GuardLog {
 }
 
 function Test-PreviousSession {
-    
+    # 上一次没正常结束就返回一个对象（含开始时间与崩溃日志路径），正常结束返回 $null
     if (-not (Test-Path -LiteralPath $script:FlagPath)) { return $null }
     $res = [pscustomobject]@{ started = ''; crashLog = $null; flagTime = [datetime]::MinValue }
     try {
@@ -511,9 +553,9 @@ function Test-PreviousSession {
     return $res
 }
 
-
-
-
+# ------------------------------------------------------------------ 兜底错误出口
+# 双击/快捷方式启动时控制台已被隐藏，未捕获的错误必须弹窗，
+# 否则用户看到的是"双击了，什么都没发生"。
 trap {
     try { $null = Write-CrashLog -ErrorRecord $_ -Where 'trap' } catch { }
     try {
@@ -524,12 +566,12 @@ trap {
     exit 1
 }
 
-
-
-
-
-
-
+# ------------------------------------------------------------------ 全局异常兜底
+# 遮罩期间最怕的是"某个事件处理器抛异常 → 异常冒出消息循环 → 整个进程退出 → 桌面露出来"。
+# 所以界面线程上的未处理异常改成记一笔然后继续跑（遮罩还在），不做"弹窗 + 退出"。
+# 刻意**不写 crash-*.log**：那份日志代表"软件崩了"，下次启动会据此报警；这里异常已经被兜住、
+# 程序还活着，写进去就会误报（定时器的 tick-errors.log 当初也是同样的理由）。
+# 这条只管界面消息循环；启动阶段的异常仍走上面那个 trap（那会儿还没有遮罩需要保）。
 try {
     [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
     [System.Windows.Forms.Application]::add_ThreadException({
@@ -542,27 +584,27 @@ try {
     })
 } catch { }
 
-
+# ------------------------------------------------------------------ 状态与常量
 $script:LastTickError = ''
-
+# 界面字体统一用雅黑：等宽字体没有汉字，交给系统补字会补成宋体，中文很难看
 $script:UiFamily = 'Microsoft YaHei UI'
-$script:Scale = 1.0             
+$script:Scale = 1.0             # 屏幕缩放比（DPI/96）：把布局按 DPI 放大，字才不糊也不小
 try { $dpiNow = [ScreenLockEarly]::GetDpiForSystem(); if ($dpiNow -gt 0) { $script:Scale = $dpiNow / 96.0 } } catch { }
-$script:DlgOpen = $false          
-$script:BoxState = 'normal'       
-
-
+$script:DlgOpen = $false          # 「修改密码」窗口开着时，暂停止顶与抢焦点
+$script:BoxState = 'normal'       # 密码框描边状态：normal（聚焦亮蓝）/ error（红）/ locked（封禁变暗）
+# 解锁密码与授权码都由安装程序预置：授权码一经安装即定版，脚本这边只负责改解锁密码。
+# 它们的加盐哈希存在配置文件里（提示是明文，方便你自己想起授权码）。
 $script:ConfigFileName = '.cascreenguard.config.json'
-$script:ConfigPath = $null           
-$script:ConfigRaw = $null           
+$script:ConfigPath = $null           # 实际读到的那一份配置的路径
+$script:ConfigRaw = $null           # 那一份配置的原文（校验摘要必须用原文）
 $script:IdleBlankMs = [int]$IdleBlankSeconds * 1000
-$script:AllowClose = $false          
-$script:State = 'Away'          
-$script:BlankTick = [uint32]0       
+$script:AllowClose = $false          # 允许关闭遮罩窗口（解锁 / 紧急退出）
+$script:State = 'Away'          # Away=屏幕熄灭 / Prompt=等待输入
+$script:BlankTick = [uint32]0       # 熄屏那一刻的「最后一次输入」时间戳
 $script:LastBlankSent = [datetime]::MinValue
 $script:FailCount = 0
-$script:TxtLockedOut     = $false          
-$script:AuthLockedOut   = $false          
+$script:TxtLockedOut     = $false          # 密码连错太多次 -> 禁止继续输入，只能关机
+$script:AuthLockedOut   = $false          # 授权码连错 3 次 -> 本次会话内禁止再输
 $script:CooldownActive = $false
 $script:CooldownUntil = [datetime]::MinValue
 $script:OrigScreenSaver = $null
@@ -572,9 +614,9 @@ $script:SelfTestLog = New-Object System.Collections.Generic.List[string]
 $script:SelfTestFailed = $false
 $script:SelfTestStep = 0
 
-
-
-
+# 配置文件的查找顺序：安装目录（外部凭证里记着）→ 脚本所在目录。
+# 把安装目录放在第一位，是为了让"桌面上的这一份脚本"和"装好的那一份"读写同一份配置，
+# 不会各自生成一份、互相打架。
 $script:ConfigCandidates = New-Object System.Collections.Generic.List[string]
 $script:StoreRegPath = 'HKCU:\Software\CAScreenGuard'
 try {
@@ -586,7 +628,7 @@ if ($script:ScriptDir) {
     [void]$script:ConfigCandidates.Add((Join-Path $script:ScriptDir $script:ConfigFileName))
 }
 
-
+# 语言：命令行 -Lang 优先；否则看外部凭证里安装时选的那个；都没有就用系统语言（上面已按系统语言定过初值）
 if ($script:LangArg -eq 'zh' -or $script:LangArg -eq 'en') {
     $script:Lang = $script:LangArg
 } else {
@@ -596,9 +638,9 @@ if ($script:LangArg -eq 'zh' -or $script:LangArg -eq 'en') {
     } catch { }
 }
 
-
+# ------------------------------------------------------------------ 小工具
 function New-RoundedPath {
-    
+    # 圆角矩形路径：给卡片/胶囊输入框做 Region 和描边用（与 make-icon.ps1 同一套画法）
     param([float]$x, [float]$y, [float]$w, [float]$h, [float]$r)
     $p = New-Object System.Drawing.Drawing2D.GraphicsPath
     $d = $r * 2
@@ -611,13 +653,13 @@ function New-RoundedPath {
 }
 
 function Get-WallpaperBitmap {
-    
-    
+    # 把系统壁纸做成一张"刚好铺满整个虚拟桌面 + 压一层暗色"的位图，给遮罩当背景用。
+    # 任何一步拿不到（纯色壁纸、幻灯片、图片损坏……）都返回 $null，调用方保持纯黑。
     try {
         $path = $null
         try { $path = [ScreenLockNative]::GetDesktopWallpaperPath() } catch { }
         if (-not $path -or -not (Test-Path -LiteralPath $path)) {
-            
+            # 幻灯片 / 跨屏拼接时 SPI 给的路径常常不可用：退回系统转码出来的那一份
             $trans = Join-Path $env:APPDATA 'Microsoft\Windows\Themes\TranscodedWallpaper'
             if (Test-Path -LiteralPath $trans) { $path = $trans }
         }
@@ -633,12 +675,12 @@ function Get-WallpaperBitmap {
             $g = [System.Drawing.Graphics]::FromImage($out)
             try {
                 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                
+                # cover：短边铺满、长边居中裁掉（等价于壁纸设置里的"填充"）
                 $s = [Math]::Max($vw / [double]$src.Width, $vh / [double]$src.Height)
                 $dw = [int][Math]::Ceiling($src.Width * $s)
                 $dh = [int][Math]::Ceiling($src.Height * $s)
                 $g.DrawImage($src, (New-Object System.Drawing.Rectangle([int](($vw - $dw) / 2), [int](($vh - $dh) / 2), $dw, $dh)))
-                
+                # 暗色遮罩：压掉壁纸的亮度，卡片和时钟的对比度才够（140 → 176：再压暗一档）
                 $shade = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(176, 0, 0, 0))
                 $g.FillRectangle($shade, 0, 0, $vw, $vh)
                 $shade.Dispose()
@@ -652,19 +694,19 @@ function Get-WallpaperBitmap {
 }
 
 function Install-WallpaperBackground {
-    
-    
-    
+    # 把壁纸铺到遮罩上（拿不到就保持纯黑）。
+    # 调用时机很关键：合成一张整屏大图要几百毫秒，必须在"屏幕已经熄灭"之后再干，
+    # 否则用户看到的是"黑幕一闪 → 壁纸慢慢出现"。
     try {
         $script:Wallpaper = Get-WallpaperBitmap
         if (-not $script:Wallpaper) { return }
-        
-        
-        
+        # 卡片那块再压一层更深的暗色：整屏是"壁纸 + 55% 暗"，卡片区域是"更深的遮罩"，
+        # 于是卡片永远比周围更暗、还带一点壁纸的色调，而不是一块死黑。
+        # （画在背景图里，卡片本身改成透明透出来，避免 WinForms 透明度重绘的开销与闪烁）
         try {
             $r = [int](18 * $script:Scale)
             if ($r -lt 12) { $r = 12 }
-            
+            # $card.Left/Top 已经是相对遮罩窗体客户区的坐标，直接用
             $path = New-RoundedPath $card.Left $card.Top $card.Width $card.Height $r
             $g = [System.Drawing.Graphics]::FromImage($script:Wallpaper)
             try {
@@ -678,30 +720,30 @@ function Install-WallpaperBackground {
         } catch { }
         $script:Form.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::None
         $script:Form.BackgroundImage = $script:Wallpaper
-        
-        
+        # 卡片改成透明让背景图透出来；卡片上那块品牌标记也得跟着透明，
+        # 否则它还是原来那块实色，会在卡片里留下一个小方块
         $card.BackColor = [System.Drawing.Color]::Transparent
         try { $logoMark.BackColor = [System.Drawing.Color]::Transparent } catch { }
         if ($script:Form.Visible) { $script:Form.Invalidate(); $script:Form.Update() }
     } catch { }
 }
 
-
-
-
+# ------------------------------------------------------------------ 解锁过渡
+# 解锁时不做任何"擦除"动作，只是把遮罩的不透明度慢慢降下去 ——
+# 观感上就是屏幕亮度缓缓恢复到正常。
 function Invoke-UnlockTransition {
     param([switch]$SkipWait)
     try {
         if (-not $SkipWait) {
-            
-            
+            # 亮屏请求是丢给后台线程发的，显示器通常要一两百毫秒才真的亮起来，
+            # 先给它一点点时间，动画才不会被"压"在后面看不见
             Start-Sleep -Milliseconds 150
             [System.Windows.Forms.Application]::DoEvents()
         }
         $steps = 16
         for ($i = 1; $i -le $steps; $i++) {
             $t = $i / [double]$steps
-            $alpha = 1.0 - [Math]::Pow($t, 0.7)     
+            $alpha = 1.0 - [Math]::Pow($t, 0.7)     # ease-out：前快后慢
             if ($alpha -lt 0.04) { $alpha = 0.04 }
             $script:Form.Opacity = $alpha
             [System.Windows.Forms.Application]::DoEvents()
@@ -709,7 +751,7 @@ function Invoke-UnlockTransition {
         }
     }
     catch {
-        
+        # 动效只是观感：任何一步失败都立刻退回"直接关闭"，绝不影响解锁本身
         try { $script:Form.Opacity = 1.0 } catch { }
     }
 }
@@ -720,7 +762,7 @@ function Invoke-Sound {
         switch ($Kind) {
             'error' { [System.Media.SystemSounds]::Hand.Play() }
             'warn' { [System.Media.SystemSounds]::Exclamation.Play() }
-            'ok' { }   
+            'ok' { }   # 解锁成功不再放提示音：安静退出更舒服（需要时把上面那行 Asterisk 加回来即可）
         }
     }
     catch { }
@@ -730,7 +772,7 @@ function Show-ErrorMsg {
     param([string]$Text, [switch]$Info)
     $script:TxtError.Text = $Text
     if (-not $script:TxtError.Visible) { $script:TxtError.Visible = $true }
-    
+    # 纯通知类消息（改密码成功/取消等）不算输入错误，别把密码框描边染红
     if (-not $Info) {
         $script:BoxState = 'error'
         try { $script:BoxPanel.Invalidate() } catch { }
@@ -738,7 +780,7 @@ function Show-ErrorMsg {
 }
 
 function Show-LockNotice {
-    
+    # 封禁提示出现时，把下面两行"快捷键/省电"提示让位给它（卡片就是靠这个才收得矮）
     try { $script:LockNotice.Visible = $true } catch { }
     try { $script:Footer1.Visible = $false } catch { }
     try { $script:Footer2.Visible = $false } catch { }
@@ -751,13 +793,13 @@ function Hide-ErrorMsg {
 }
 
 function Set-AuthLockedUI {
-    
-    
+    # 授权码连错 3 次：底部挂红色警告 + 把对话框里所有输入都锁掉，只留"退出/取消"
+    # -Permanent：这次封禁是落盘的，重启程序也不会解除，所以在警告里说清楚
     param($Dlg, $Tip, [switch]$Permanent)
     try {
         $body = (T 'k59')
-        
-        
+        # 「配置遭篡改」那一段只在"配置需要重建"这条路上说 ——
+        # 正常的改密码窗口里配置根本没被动过，说这个是凭空恐吓
         if ($Permanent) { $body += "`r`n" + (T 'k75') }
         $body += "`r`n`r`n" + (T 'k65')
         if ($Permanent) { $body += "`r`n" + (T 'k67') }
@@ -765,18 +807,18 @@ function Set-AuthLockedUI {
         $Tip.ForeColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
         $k = $script:Scale
         if ($k -lt 1) { $k = 1 }
-        
+        # 高度按实际文字量算，别再写死：中英文长度差得远，写死就会把最后几行裁掉
         $need = [System.Windows.Forms.TextRenderer]::MeasureText(
             $Tip.Text, $Tip.Font,
             (New-Object System.Drawing.Size([Math]::Max(60, $Tip.Width - [int](8 * $k)), 4000)),
             [System.Windows.Forms.TextFormatFlags]::WordBreak).Height + [int](12 * $k)
         $Tip.SetBounds($Tip.Left, $Tip.Top, $Tip.Width, $need)
-        
+        # 窗口得长到"提示框底边 + 余量"
         $wantH = $Tip.Top + $need + [int](18 * $k)
         if ($Dlg.ClientSize.Height -lt $wantH) {
             $Dlg.ClientSize = New-Object System.Drawing.Size($Dlg.ClientSize.Width, $wantH)
         }
-        
+        # 授权码都连错 3 次了：锁屏那个密码框也一起禁掉，和密码连错 8 次同等待遇
         $script:TxtLockedOut = $true
         $script:BoxState = 'locked'
         try { $script:Txt.Enabled = $false } catch { }
@@ -788,8 +830,8 @@ function Set-AuthLockedUI {
         Show-LockNotice
         foreach ($c in $Dlg.Controls) {
             if ($c -is [System.Windows.Forms.TextBox]) { $c.Enabled = $false; $c.Text = '' }
-            
-            
+            # 「取消/退出」那颗按钮要留着让人能关窗。这里按 Tag 认角色，
+            # 不比按钮文字 —— 文字会随语言变，比错就会把"退出"一起锁死。
             elseif ($c -is [System.Windows.Forms.Button] -and $c.Tag -ne 'dismiss') {
                 $c.Enabled = $false
                 $c.BackColor = [System.Drawing.Color]::FromArgb(214, 216, 220)
@@ -800,8 +842,8 @@ function Set-AuthLockedUI {
 }
 
 function Test-AuthCode {
-    
-    
+    # 授权码校验：与加盐哈希比对；没有授权码就一律拒绝。
+    # -Source 指定拿哪一份来比对（配置被删/被改时，只能信外部凭证里那一份）。
     param([string]$Code, $Source)
     try {
         if ($null -eq $Source) { $Source = $script:Config }
@@ -811,7 +853,7 @@ function Test-AuthCode {
         $iterations = 120000
         if ($Source.authIterations) { $iterations = [int]$Source.authIterations }
         $salt = [Convert]::FromBase64String($Source.authSalt)
-        
+        # Rfc2898DeriveBytes 持有非托管资源：用完必须 Dispose（三处派生都要）
         $derive = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($code, $salt, $iterations)
         try { $actual = $derive.GetBytes(32) } finally { $derive.Dispose() }
         $expect = [Convert]::FromBase64String($Source.authHash)
@@ -824,8 +866,8 @@ function Test-AuthCode {
 }
 
 function Test-PlainAscii {
-    
-    
+    # 解锁密码只收半角可见字符：英文、数字、符号。空格和中文都不收 ——
+    # 因为解锁界面的输入框是不让调中文输入法的，收下中文等于给自己挖坑。
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $false }
     foreach ($ch in $Text.ToCharArray()) {
@@ -836,27 +878,27 @@ function Test-PlainAscii {
 }
 
 function Test-NewPasswordInput {
-    
-    
+    # 「修改解锁密码」和「配置重建」两个窗口用的是同一套新密码校验，区别只在提示文案的键名。
+    # 返回 Message（空串 = 通过）和 Field（出错该把焦点放哪个输入框：1=第一个，2=确认框）
     param([string]$First, [string]$Second, [string]$KeyTooShort, [string]$KeyNotAscii, [string]$KeyMismatch)
     if ($First.Length -lt 4) { return [pscustomobject]@{ Message = (T $KeyTooShort); Field = 1 } }
     if (-not (Test-PlainAscii $First)) { return [pscustomobject]@{ Message = (T $KeyNotAscii); Field = 1 } }
-    
+    # -cne 而不是 -ne：密码是大小写敏感的，PowerShell 的 -ne 默认不分大小写
     if ($First -cne $Second) { return [pscustomobject]@{ Message = (T $KeyMismatch); Field = 2 } }
     return [pscustomobject]@{ Message = ''; Field = 1 }
 }
 
 function Show-DialogError {
-    
+    # 两个窗口的错误行都是"写文本 + 显示"这一种用法，收一处
     param($Label, [string]$Message)
     $Label.Text = $Message
     $Label.Visible = $true
 }
 
 function Set-DialogDpi {
-    
-    
-    
+    # 对话框也要按 DPI 放大布局，放大之后再把字号设回点数值
+    # （原因见主遮罩处的说明：字体是点单位，本来就会随 DPI 变大，不能再被 Scale 放大一次）。
+    # $Items 里每一项是 @{ Control = 控件; Pt = 字号 }，需要粗体就再加 Style。
     param($Dlg, [string]$Family, [float]$BasePt, $Items)
     if ($script:Scale -le 1.01) { return }
     $Dlg.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
@@ -867,10 +909,10 @@ function Set-DialogDpi {
     }
 }
 
-
+# ------------------------------------------------------------------ 密码存取
 function Read-PasswordConfig {
-    
-    
+    # 读配置的同时记下"是哪一份、原文是什么"：校验摘要必须用原文，
+    # 不能重新序列化一遍（转义规则不同就会让两边算出的摘要对不上）。
     $script:ConfigPath = $null
     $script:ConfigRaw = $null
     foreach ($path in $script:ConfigCandidates) {
@@ -891,9 +933,9 @@ function Read-PasswordConfig {
 }
 
 function Save-PasswordConfig {
-    
-    
-    
+    # 写入时把 marker 一起算好：摘要 = 对"把 marker 的值清空后的原文"做 HMAC-SHA256。
+    # 顺序必须是：先按空 marker 生成正文 → 算摘要 → 再把值填回去。
+    # 这样校验时只要把值清空就能一字不差地还原。安装器用的是同一条规则。
     param($Record, $Store)
     $body = [pscustomobject]@{
         version        = $Record.version
@@ -910,9 +952,9 @@ function Save-PasswordConfig {
     }
     $text = $body | ConvertTo-Json -Compress -Depth 4
     if ($null -eq $Store) { $Store = Read-IntegrityStore }
-    
-    
-    
+    # 用正则而不是字符串包含：ConvertTo-Json 一旦输出成 "marker": ""（多个空格），
+    # 包含判断会悄悄不成立 —— marker 就写不进去，下次启动会被判成"配置被动过"。
+    # 这里和 Get-ConfigCanonical 用同一条规则，保证写入与校验认的是同一种写法。
     if ($Store -and $Store.markerKey) {
         $text = [regex]::Replace($text, '"marker"\s*:\s*""',
             ('"marker":"' + (Get-ConfigMarker -Text $text -KeyB64 $Store.markerKey) + '"'))
@@ -924,8 +966,8 @@ function Save-PasswordConfig {
             if ($dir -and -not (Test-Path -LiteralPath $dir)) {
                 New-Item -ItemType Directory -Path $dir -Force | Out-Null
             }
-            
-            
+            # 注意：这个文件是隐藏的。Windows 下用 FileMode.Create 覆盖一个带 Hidden 属性的
+            # 文件会直接 Access Denied，所以写之前必须先去掉隐藏属性，写完再设回去。
             if (Test-Path -LiteralPath $path) {
                 try { (Get-Item -LiteralPath $path -Force).Attributes = [System.IO.FileAttributes]::Normal } catch { }
             }
@@ -941,7 +983,7 @@ function Save-PasswordConfig {
 }
 
 function New-PasswordRecord {
-    
+    # 授权码由安装程序定版，这里只负责解锁密码：授权码那几个字段原样抄过来，绝不重设。
     param([string]$Password, $Auth)
     if ($null -eq $Auth) { $Auth = Read-IntegrityStore }
     if ($null -eq $Auth) { $Auth = $script:Config }
@@ -993,19 +1035,19 @@ function Test-PasswordRecord {
     catch { return $false }
 }
 
-
-
-
-
-
-
-
-
+# ==================================================================
+#  配置完整性层：外部凭证（注册表 + APPDATA 副本）+ HMAC 摘要标记
+#  配置由安装程序预置，脚本这边只负责"它有没有被动过"。
+#  摘要规则：把配置原文里 marker 的值清空，再对这段原文做 HMAC-SHA256。
+#  （必须用原文，不能重新序列化：JSON 转义规则的差异会让两边算出来的值对不上。）
+#  说明：这是"让篡改可见 + 防随手动"，不是密码学意义上的不可篡改 —— 同账户的攻击者
+#        如果把注册表和副本一起清掉，就会退化成"从来没装过"（纯用户态方案的极限）。
+# ==================================================================
 $script:StoreRegPath = 'HKCU:\Software\CAScreenGuard'
 $script:StoreMirrorPath = Join-Path (Join-Path $env:APPDATA 'CAScreenGuard') 'store.json'
 
 function Get-ConfigCanonical {
-    
+    # 把原文里 marker 的值清空 —— 和安装器用的是同一条规则
     param([string]$Text)
     return [regex]::Replace($Text, '"marker":"[^"]*"', '"marker":""')
 }
@@ -1021,7 +1063,7 @@ function Get-ConfigMarker {
 }
 
 function Read-IntegrityStore {
-    
+    # 先看注册表，再看 APPDATA 副本；两处都没有 -> $null（= 从没装过）
     try {
         if (Test-Path -LiteralPath $script:StoreRegPath) {
             $v = Get-ItemProperty -LiteralPath $script:StoreRegPath -ErrorAction Stop
@@ -1049,10 +1091,10 @@ function Read-IntegrityStore {
     return $null
 }
 
-
-
-
-
+# ------------------------------------------------------------------ 授权码永久封禁
+# 和"另一个窗口连错 3 次"不同：配置被动过的那条路上，三次输不对授权码就当作有预谋的尝试，
+# 封禁要落盘 —— 注册表和 APPDATA 各记一份，重启程序照样禁止输入，只有重新安装才能清掉。
+# 只在两处都写不进去时才退化成"本次运行内禁止"。
 $script:AuthBanRegName = 'AuthBan'
 $script:AuthBanMirrorPath = Join-Path (Join-Path $env:APPDATA 'CAScreenGuard') 'authban.txt'
 
@@ -1081,8 +1123,8 @@ function Set-AuthBanned {
     catch { }
 }
 
-
-
+# 启动时先把落盘的封禁读出来：上次在"配置被改"那个窗口里连错 3 次留下的记录，
+# 重开程序照样算数 —— 否则重启一次就能再试三次。
 $script:AuthBanned = Test-AuthBanned
 if ($script:AuthBanned) { $script:AuthLockedOut = $true }
 
@@ -1128,8 +1170,8 @@ function New-IntegrityStore {
 }
 
 function Test-ConfigIntegrity {
-    
-    
+    # 判定：fresh=从没装过 / ok=正常 / deleted=外部凭证还在但配置没了 /
+    #       modified=配置被动过（没有标记、或摘要对不上）/ unprovable=有配置却没有外部凭证
     param($ConfigRecord, [string]$RawText)
     $store = Read-IntegrityStore
     if ($null -eq $store) {
@@ -1140,14 +1182,14 @@ function Test-ConfigIntegrity {
     if (-not $ConfigRecord.marker) { return 'modified' }
     if ([string]::IsNullOrEmpty($RawText)) { return 'modified' }
     $canonical = Get-ConfigCanonical -Text $RawText
-    
+    # -cne 而不是 -ne：PowerShell 的比较默认不区分大小写，而 base64 的大小写是有意义的
     if ((Get-ConfigMarker -Text $canonical -KeyB64 $store.markerKey) -cne $ConfigRecord.marker) { return 'modified' }
     return 'ok'
 }
 
-
+# ------------------------------------------------------------------ 息屏 / 解锁逻辑
 function Invoke-GoDark {
-    
+    # 立刻再次熄屏；已输入的内容按设计保留（只有 Ctrl+Backspace 会清空）
     $script:State = 'Away'
     $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
     $script:LastBlankSent = Get-Date
@@ -1170,7 +1212,7 @@ function Update-CooldownMessage {
 
 function Invoke-SubmitAttempt {
     if ($script:AllowClose) { return }
-    if ($script:TxtLockedOut) { return }        
+    if ($script:TxtLockedOut) { return }        # 已经封禁了，什么都不做
 
     $now = Get-Date
     if ($script:CooldownActive -and $now -lt $script:CooldownUntil) {
@@ -1181,27 +1223,27 @@ function Invoke-SubmitAttempt {
     }
 
     $typed = $script:Txt.Text
-    if ([string]::IsNullOrEmpty($typed)) { return }   
+    if ([string]::IsNullOrEmpty($typed)) { return }   # 空回车忽略，避免误操作
 
     if (Test-PasswordRecord -Password $typed -Record $script:Config) {
         $script:FailCount = 0
         $script:AllowClose = $true
         [ScreenLockNative]::MonitorOn()
         $script:Timer.Stop()
-        
+        # 遮罩不透明度缓缓降为 0：不是"擦掉"，而是屏幕亮度慢慢恢复正常
         Invoke-UnlockTransition -SkipWait:$SelfTest
         $script:Form.Close()
         return
     }
 
-    
+    # 密码错误：清空输入 + 提示 + 声音反馈；连续错误则给出递增的短暂冷却
     $script:FailCount++
-    
+    # 连错 8 次：不再给任何输入机会，只留"关机"这一条路
     if ($script:FailCount -ge 8) {
         $script:TxtLockedOut = $true
         $script:CooldownActive = $false
         try { $script:Txt.Enabled = $false } catch { }
-        
+        # 输入框一起变暗：让人一眼看出"这里已经不再接受输入了"
         $script:BoxState = 'locked'
         try {
             $script:BoxPanel.BackColor = [System.Drawing.Color]::FromArgb(16, 16, 18)
@@ -1234,9 +1276,9 @@ function Invoke-GuardTick {
         if ($script:AllowClose) { return }
         $now = Get-Date
 
-        
-        
-        
+        # 定时器间隔 250ms：两个 tick 之间差出好几秒，要么是机器睡过去又醒了，要么是定时器被饿死。
+        # 两种都按"可能刚从睡眠/休眠恢复"处理：重新把系统钉醒、把遮罩压回最前，熄屏状态下再熄一次屏。
+        # 不处理的话，睡眠恢复后唤醒请求可能已经不作数了、遮罩也可能被别的窗口盖住。
         $gap = ($now - $script:LastTickWall).TotalSeconds
         if ($gap -gt 5) {
             Write-GuardLog ('定时器中断 {0:N1} 秒，按"可能刚从睡眠/休眠恢复"处理：重新保持唤醒并复位遮罩' -f $gap)
@@ -1251,8 +1293,8 @@ function Invoke-GuardTick {
         }
         $script:LastTickWall = $now
 
-        
-        
+        # 唤醒请求周期复查：这个请求是按线程生效的，睡眠/休眠恢复后可能已经失效，所以每 30 秒重发一次。
+        # 成功不记日志（否则一条流水账被刷满），只记"发不出去"——那才是真出问题的迹象。
         if (($now - $script:LastAwakeTick).TotalSeconds -ge 30) {
             $script:LastAwakeTick = $now
             $awakeOk = $false
@@ -1264,12 +1306,12 @@ function Invoke-GuardTick {
 
         if ($script:State -eq 'Away') {
             if ([ScreenLockNative]::GetLastInputTick() -ne $script:BlankTick) {
-                
+                # 有新的输入 → 显示器已被系统点亮，进入等待输入状态
                 $script:State = 'Prompt'
                 $script:LastBlankSent = [datetime]::MinValue
             }
             elseif ((($now - $script:LastBlankSent).TotalSeconds -ge 10) -and ($idle -ge 3000)) {
-                
+                # 兜底：仍处于无人操作状态，却被人/程序点亮了屏幕，再熄一次
                 $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
                 $script:LastBlankSent = $now
                 [ScreenLockNative]::MonitorOff()
@@ -1282,13 +1324,13 @@ function Invoke-GuardTick {
         Update-CooldownMessage
         Update-Clock
 
-        
+        # 「修改密码」窗口开着时，不抢焦点也不压顶，否则会盖住用户的对话框
         if (-not $script:DlgOpen) {
-            
-            
-            
-            
-            
+            # 遮罩必须一直压在最前：任何状态都要做，否则别的顶层窗口会盖在遮罩之上露出桌面内容。
+            # 只有"有人在场"（刚有输入，$idle 很小）时才额外把前台抢回来，
+            # 避免无谓地跟别的线程较劲（AttachThreadInput 在极端情况下会互相等待）。
+            # 拿不到有效 tick 时（GetLastInputTick 失败返回 uint.MaxValue，此时 idle 是 0）
+            # 不做这一步：否则会误判成"用户正在操作"，每 250ms 抢一次前台，屏幕抖个不停。
             [ScreenLockNative]::ReassertTopMost($script:Form.Handle)
             $tickOk = ([ScreenLockNative]::GetLastInputTick() -ne [uint32]::MaxValue)
             if ($tickOk -and ($idle -lt 2000) -and ([ScreenLockNative]::ForegroundWindow -ne $script:Form.Handle)) {
@@ -1298,7 +1340,7 @@ function Invoke-GuardTick {
         }
     }
     catch {
-        
+        # 只有"错误内容变了"才落盘：定时器 250ms 一次，不能每次都写
         $msg = $_.Exception.Message
         if ($msg -ne $script:LastTickError) {
             $script:LastTickError = $msg
@@ -1307,10 +1349,10 @@ function Invoke-GuardTick {
     }
 }
 
-
+# ------------------------------------------------------------------ 系统状态
 function Restore-PendingScreenSaverSave {
-    
-    
+    # 上一次要是被强杀/断电结束的，屏保设置会停在"被我们关掉"的状态，而原值只在这份文件里。
+    # 先把系统恢复成原样，再走正常流程 —— 否则这次读到的"原值"就是那个 0，屏保会永久关着。
     try {
         if (-not (Test-Path -LiteralPath $script:PresavePath)) { return }
         $saved = [System.IO.File]::ReadAllText($script:PresavePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
@@ -1335,21 +1377,21 @@ function Save-ScreenSaverPrerestore {
 }
 
 function Initialize-SystemState {
-    Restore-PendingScreenSaverSave          
+    Restore-PendingScreenSaverSave          # 先补上一次没还原掉的
     try { $script:OrigScreenSaver = [ScreenLockNative]::GetScreenSaverActive() } catch { $script:OrigScreenSaver = $null }
     try {
         $script:OrigScreenSaverReg = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction Stop).ScreenSaveActive
     }
     catch { $script:OrigScreenSaverReg = $null }
-    Save-ScreenSaverPrerestore              
+    Save-ScreenSaverPrerestore              # 改之前先把原值落盘
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
-    
-    
+    # 保持唤醒 = 告诉系统"这条线程还在干活、别睡"（ES_SYSTEM_REQUIRED，按线程生效）。
+    # 请求失败时定时器里会每 30 秒复查重发一次，所以这里只要把时间戳记下来。
     try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
     $script:LastAwakeTick = Get-Date
-    
-    
-    
+    # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露。
+    # -NoKeyboardHook 时整块跳过：全局低级键盘钩子会让每一次按键都先经过本进程，
+    # 机器上若有远程控制 / 自动化 / AI 客户端这类程序，可能与它互相干扰。
     if (-not $NoKeyboardHook) {
         try { $null = [ScreenLockNative]::InstallKeyboardHook() } catch { }
         try { [ScreenLockNative]::BlockSystemKeys = $true } catch { }
@@ -1359,14 +1401,14 @@ function Initialize-SystemState {
 function Restore-SystemState {
     if ($script:Restored) { return }
     $script:Restored = $true
-    
+    # 先把键盘还回去：解锁后要立刻能正常用 Win / Alt+Tab
     try { [ScreenLockNative]::BlockSystemKeys = $false } catch { }
     try { [ScreenLockNative]::RemoveKeyboardHook() } catch { }
-    
+    # 窗口此时可能已经销毁：先清空投递目标（退回广播兜底），确保屏幕一定亮回来
     try { [ScreenLockNative]::TargetWindow = [IntPtr]::Zero } catch { }
-    Remove-RunningFlag                        
+    Remove-RunningFlag                        # 走到这儿说明是正常退出
     try { [ScreenLockNative]::MonitorOn() } catch { }
-    
+    # 边泵消息边等：点亮请求现在发给我们自己的窗口，阻塞式等待会让它没人处理
     try {
         $deadline = (Get-Date).AddSeconds(1.2)
         while ((Get-Date) -lt $deadline) {
@@ -1398,17 +1440,17 @@ function Restore-SystemState {
     try { $null = [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 
-
-
-
+# ==================================================================
+#  修改解锁密码（Ctrl+Shift+Alt+E）：需要授权码（首次运行时由你自己设置）
+# ==================================================================
 function Show-ChangePasswordDialog {
-    
+    # 返回值：'ok' = 已保存新密码 / 'cancel' = 用户取消 / 'toomany' = 授权码错太多次 / 'noauth' = 本机还没设授权码
     $family = $script:UiFamily
     $script:CpwResult = 'cancel'
     $script:CpwAuthFails = 0
     $script:CpwErr = $null
 
-    
+    # 没设过授权码（例如沿用了旧配置）：直接告诉用户怎么办，不让他白试
     if (-not $script:Config -or -not $script:Config.authHash) {
         [System.Windows.Forms.MessageBox]::Show((T 'k10'), 'CAScreenGuard', 'OK', 'Warning') | Out-Null
         return 'noauth'
@@ -1509,7 +1551,7 @@ function Show-ChangePasswordDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k19')
-    $cancel.Tag = 'dismiss'          
+    $cancel.Tag = 'dismiss'          # 封禁时唯一要留下来的那颗按钮（见 Set-AuthLockedUI）
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1518,7 +1560,7 @@ function Show-ChangePasswordDialog {
     $cancel.SetBounds(416, 324, 88, 32)
     $script:CpwDlg.Controls.Add($cancel)
 
-    
+    # 底部这行平时是空的；授权码连错 3 次时挂上红色警告（和重建窗口同一套做法）
     $script:CpwTip = New-Object System.Windows.Forms.Label
     $script:CpwTip.AutoSize = $false
     $script:CpwTip.Text = ''
@@ -1538,11 +1580,11 @@ function Show-ChangePasswordDialog {
                 if ($script:CpwAuthFails -ge 3) {
                     $script:CpwAuthFails = 0
                     $script:AuthLockedOut = $true
-                    $script:CpwResult = 'toomany'   
+                    $script:CpwResult = 'toomany'   # 让外层能区分"被封禁"和"用户主动取消"
                     Set-AuthLockedUI -Dlg $script:CpwDlg -Tip $script:CpwTip -Permanent:$script:AuthBanned
                     return
                 }
-                
+                # 输错授权码不给任何提示：既不确认"你猜的这个不对"，也不告诉还剩几次机会
                 $script:CpwErr.Visible = $false
                 $script:CpwAuth.Clear()
                 $null = $script:CpwAuth.Focus()
@@ -1570,7 +1612,7 @@ function Show-ChangePasswordDialog {
             $script:CpwDlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
         })
     $cancel.Add_Click({
-            
+            # 刚被封禁时保留 'toomany'，别被关窗动作覆盖成 "cancel"（否则外层提示会说成"你取消了"）
             if ($script:CpwResult -ne 'toomany') { $script:CpwResult = 'cancel' }
             $script:CpwDlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
         })
@@ -1602,8 +1644,8 @@ function Invoke-ChangePasswordFlow {
     try { $outcome = Show-ChangePasswordDialog } catch { $outcome = 'cancel' }
     $script:DlgOpen = $false
     try { if ($script:Txt.Enabled) { $null = $script:Txt.Focus() } } catch { }
-    
-    
+    # 注意：这里不能用 MessageBox —— 遮罩是 topmost，弹窗会被它盖住，
+    # 用户只会看到"点了没反应"。回执直接写在锁屏界面自己的提示行上（永远可见）。
     if ($outcome -eq 'ok') {
         try { $script:Txt.Clear() } catch { }
         Show-ErrorMsg (T 'k25') -Info
@@ -1616,19 +1658,19 @@ function Invoke-ChangePasswordFlow {
     }
 }
 
-
-
-
+# ==================================================================
+#  配置重建对话框：配置文件被删除 / 被改动时，用授权码确认身份，再重设解锁密码
+# ==================================================================
 
 function Show-RebuildDialog {
-    
-    
-    
+    # 返回值：'ok' = 已重设新密码 / 'cancel' = 用户放弃 / 'toomany' = 授权码错太多次
+    # 说明：事件处理脚本块看不到函数内的局部变量，所以对话框里
+    #       会被事件用到的控件统一放进 $script: 作用域。
     $family = $script:UiFamily
     $script:DlgErr = $null
     $script:DlgFails = 0
     $script:DlgResult = 'cancel'
-    
+    # 配置文件本身就不可信了，只能拿外部凭证（注册表 / APPDATA 副本）里那一份来比对授权码
     $script:DlgStore = Read-IntegrityStore
     $hintText = (T 'k28')
     if ($script:DlgStore -and $script:DlgStore.authHint) { $hintText = $script:DlgStore.authHint }
@@ -1652,7 +1694,7 @@ function Show-RebuildDialog {
     $head = New-Object System.Windows.Forms.Label
     $head.AutoSize = $false
     $head.Text = (T 'k30')
-    
+    # 英文标题比中文长得多，字号降一档才不会折行被截掉
     $headPt = 15
     if ($script:Lang -eq 'en') { $headPt = 13 }
     $head.Font = New-Object System.Drawing.Font($family, [float]$headPt, [System.Drawing.FontStyle]::Bold)
@@ -1732,7 +1774,7 @@ function Show-RebuildDialog {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = (T 'k39')
-    $cancel.Tag = 'dismiss'          
+    $cancel.Tag = 'dismiss'          # 同上：封禁时保留这颗，否则用户连窗都关不掉
     $cancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cancel.FlatAppearance.BorderSize = 0
     $cancel.BackColor = [System.Drawing.Color]::FromArgb(232, 233, 237)
@@ -1758,17 +1800,17 @@ function Show-RebuildDialog {
             if (-not (Test-AuthCode -Code $script:DlgCurAuth.Text -Source $script:DlgStore)) {
                 $script:DlgFails++
                 if ($script:DlgFails -ge 3) {
-                    
-                    
+                    # 配置被动过 + 三次输不对授权码：按"有预谋的攻击"处理。
+                    # 这里和另一个窗口不同 —— 封禁要落盘，重启程序、重新打开这个窗口都不再接受输入。
                     $script:DlgFails = 0
                     $script:AuthLockedOut = $true
-                    $script:DlgResult = 'toomany'   
+                    $script:DlgResult = 'toomany'   # 同上：让外层给出"连错 3 次"的提示，而不是"你取消了"
                     Set-AuthBanned
                     $script:AuthBanned = $true
                     Set-AuthLockedUI -Dlg $script:Dlg -Tip $tip -Permanent
                     return
                 }
-                
+                # 输错授权码不给任何提示
                 $script:DlgErr.Visible = $false
                 $script:DlgCurAuth.Clear()
                 $null = $script:DlgCurAuth.Focus()
@@ -1822,31 +1864,31 @@ function Show-RebuildDialog {
     return $script:DlgResult
 }
 
-
-
-
+# ==================================================================
+#  启动准备：控制台、单实例、密码
+# ==================================================================
 function Stop-SingleInstance {
-    
+    # 正常退出时把单实例锁还回去：不然下次启动只能靠"锁被遗弃"那条兜底分支进来
     try { if ($script:Mutex) { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose(); $script:Mutex = $null } } catch { }
 }
 if (-not $SelfTest) {
-    
+    # 控制台窗口已经在脚本最早期处理过（见开头"启动最早期"）
 
-    
+    # 单实例：避免两个遮罩互相打架
     $script:Mutex = New-Object System.Threading.Mutex($false, 'Local\CAScreenGuard.SingleInstance')
     $hasMutex = $false
     try { $hasMutex = $script:Mutex.WaitOne(0) }
-    catch [System.Threading.AbandonedMutexException] { $hasMutex = $true }   
+    catch [System.Threading.AbandonedMutexException] { $hasMutex = $true }   # 上次被强杀留下的锁，按"可用"处理
     catch { $hasMutex = $false }
     if (-not $hasMutex) {
-        
-        
-        
+        # 已经有一份在跑了：只留一句提示就走。
+        # 注意别把下面的"上次没正常结束"检查卷进这一支 —— 那样正常启动时它永远不会执行，
+        # 而"已有实例"时又会误报（标记文件正是隔壁那一份自己建的）。
         [System.Windows.Forms.MessageBox]::Show((T 'k46'), (T 'k66')) | Out-Null
         exit 0
     }
 
-    
+    # 上一次是不是没正常结束？报告完就把旧标记清掉，免得每次启动都翻旧账
     $prev = Test-PreviousSession
     Remove-RunningFlag
     if ($prev) {
@@ -1858,8 +1900,8 @@ if (-not $SelfTest) {
         }
     }
 
-    
-    
+    # 配置只能由安装程序预置。先判定它有没有被动过，再决定能不能开锁 ——
+    # 「配置文件被删掉 / 被改过」从"悄悄变成首次运行"改成了一件必须当场处理的事。
     $script:AutoReset = [bool]$ResetPassword
     $script:Config = Read-PasswordConfig
     $integrity = Test-ConfigIntegrity -ConfigRecord $script:Config -RawText $script:ConfigRaw
@@ -1880,7 +1922,7 @@ if (-not $SelfTest) {
             exit 0
         }
         else {
-            
+            # deleted / modified：配置文件被删掉或者被改过
             $outcome = Show-RebuildDialog
             if ($outcome -ne 'ok') {
                 $note = (T 'k50')
@@ -1895,16 +1937,16 @@ if (-not $SelfTest) {
     }
 }
 else {
-    
+    # 自检：使用内存中的测试密码，不读写真实配置
     $script:Config = New-PasswordRecord -Password 'selftest-dummy-pw'
 }
 
-
-
-
+# ==================================================================
+#  主界面（全屏黑色遮罩 + 密码框）
+# ==================================================================
 $family = $script:UiFamily
 $cardW = 580
-
+# 卡片不铺满高度：内容排完之后上下只留一点点余量。封禁提示出现时占用"快捷键提示"那两行的位置
 $cardH = 304
 
 $script:Form = New-Object System.Windows.Forms.Form
@@ -1917,8 +1959,8 @@ $script:Form.ShowInTaskbar = $false
 $script:Form.KeyPreview = $true
 $script:Form.BackColor = [System.Drawing.Color]::Black
 $script:Form.ImeMode = [System.Windows.Forms.ImeMode]::Disable
-
-
+# 双缓冲：整屏大图（壁纸）重绘时先画到内存再一次性贴出，
+# 否则肉眼能看到"从上往下一道一道刷出来"的过程（观感很出戏）
 try {
     $setStyle = $script:Form.GetType().GetMethod('SetStyle', [System.Reflection.BindingFlags]'Instance,NonPublic')
     $bufferStyles = [System.Windows.Forms.ControlStyles]::UserPaint -bor [System.Windows.Forms.ControlStyles]::AllPaintingInWmPaint -bor [System.Windows.Forms.ControlStyles]::DoubleBuffer -bor [System.Windows.Forms.ControlStyles]::OptimizedDoubleBuffer
@@ -1929,16 +1971,16 @@ $card = New-Object System.Windows.Forms.Panel
 $card.Size = New-Object System.Drawing.Size($cardW, $cardH)
 $card.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
 $script:Form.Controls.Add($card)
+# 卡片的位置不在这里定：DPI 缩放之后还要按"放大后的尺寸 + 时钟的位置"重排一次（见下方定位段）
 
+# 壁纸背景不在这一刻画：要等屏幕真的熄下去之后再静默合成（见 Install-WallpaperBackground）
 
-
-
-
-
-
+# 标题行：左边重新加一个「手掌」标记表示隐私（白色），右边「息屏保护中」，两者作为整体居中。
+# 手掌是自己画的矢量图形：掌心 + 四根手指 + 拇指，全部用圆角矩形拼 —— 只保留"张开的手 = 隐私"
+# 这个通用直觉，不是任何一家图标库那张图的复制，所以不存在侵权问题。
 $titleText = (T 'k54')
 $titleFont = New-Object System.Drawing.Font($family, [float]22, [System.Drawing.FontStyle]::Bold)
-
+# MeasureText 量出来的是物理像素，这里要换回布局用的逻辑像素（后面整体还要按 DPI 放大一次）
 $titleW = [int]([System.Windows.Forms.TextRenderer]::MeasureText($titleText, $titleFont).Width / $script:Scale)
 $titleY = 34
 $handSize = 34
@@ -1954,16 +1996,16 @@ $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
 $title.SetBounds($groupX + $handSize + $handGap, $titleY, $titleW + 8, 44)
 $card.Controls.Add($title)
 
-
+# 手掌标记：单独一个同色小面板（和卡片同底色，等于透明），任何 DPI 下都是矢量级清晰
 $handMark = New-Object System.Windows.Forms.Panel
 $handMark.SetBounds($groupX, $titleY + [int]((44 - $handSize) / 2), $handSize, $handSize)
 $handMark.BackColor = [System.Drawing.Color]::FromArgb(13, 13, 15)
 $handMark.Add_Paint({
         param($sender, $e)
         try {
-            
-            
-            
+            # 直接用系统符号字体里的「举起的手」U+270B：单色字形、可以染成白色，
+            # 比手工拼圆角矩形干净得多；而且是 Unicode 标准字形（各平台都在用），不涉及侵权。
+            # Segoe UI Symbol 从 Windows 7 起就是系统自带，不需要额外安装任何字体。
             $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
             $e.Graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
             $f = [float]$sender.Width
@@ -1993,7 +2035,7 @@ $box = New-Object System.Windows.Forms.Panel
 $box.Size = New-Object System.Drawing.Size($boxW, $boxH)
 $box.Location = New-Object System.Drawing.Point([int](($cardW - $boxW) / 2), 130)
 $box.BackColor = [System.Drawing.Color]::FromArgb(26, 26, 30)
-$script:BoxPanel = $box          
+$script:BoxPanel = $box          # 事件脚本块看不到局部变量，描边重绘要经 $script: 拿它
 $card.Controls.Add($box)
 
 $script:Txt = New-Object System.Windows.Forms.TextBox
@@ -2020,14 +2062,14 @@ $card.Controls.Add($script:TxtError)
 $footer1 = New-Object System.Windows.Forms.Label
 $footer1.AutoSize = $false
 $footer1.Text = (T 'k56')
-
+# 英文这行比中文长得多，字号降一档才压得进一行
 $script:FooterPt = 9.5
 if ($script:Lang -eq 'en') { $script:FooterPt = 8.5 }
 $footer1.Font = New-Object System.Drawing.Font($family, [float]$script:FooterPt)
 $footer1.ForeColor = [System.Drawing.Color]::FromArgb(128, 134, 142)
 $footer1.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $footer1.SetBounds(0, 230, $cardW, 22)
-$script:Footer1 = $footer1          
+$script:Footer1 = $footer1          # 封禁时要把它藏起来（事件里拿不到局部变量）
 $card.Controls.Add($footer1)
 
 $footer2 = New-Object System.Windows.Forms.Label
@@ -2037,15 +2079,15 @@ $footer2.Font = New-Object System.Drawing.Font($family, [float]9)
 $footer2.ForeColor = [System.Drawing.Color]::FromArgb(86, 92, 100)
 $footer2.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 
-
+# 密码连错 8 次后才显示：封禁说明 + 只能关机
 $script:LockNotice = New-Object System.Windows.Forms.Label
 $script:LockNotice.AutoSize = $false
 $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 $script:LockNotice.ForeColor = [System.Drawing.Color]::FromArgb(255, 96, 96)
 $script:LockNotice.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:LockNotice.Text = (T 'k63') + "`r`n" + (T 'k64')
-
-
+# 封禁提示只在这两行的位置上出现（和 footer1/footer2 重叠）—— 出现时那两行提示会被隐藏，
+# 这样卡片就不用为它额外留一大块空白
 $script:LockNotice.SetBounds(0, 228, $cardW, 54)
 $script:LockNotice.Visible = $false
 $card.Controls.Add($script:LockNotice)
@@ -2053,9 +2095,9 @@ $footer2.SetBounds(0, 254, $cardW, 22)
 $script:Footer2 = $footer2
 $card.Controls.Add($footer2)
 
-
-
-
+# ------------------------------------------------------------------ 卡片外面的时钟
+# 时间放在遮罩上（卡片之外）。整体统一用微软雅黑：等宽字体没有汉字，
+# 交给系统补字会补成宋体，中文看起来很难看。
 $script:ClockTime = New-Object System.Windows.Forms.Label
 $script:ClockTime.AutoSize = $false
 $script:ClockTime.BackColor = [System.Drawing.Color]::Transparent
@@ -2071,8 +2113,8 @@ $script:ClockDate.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $script:Form.Controls.Add($script:ClockDate)
 
 function Update-NetInfo {
-    
-    
+    # 网络：只判断"通不通、有线还是无线"，不读 Wi-Fi 名称、不读信号强度 ——
+    # 后者要走 WLAN API，而且名字本身也算隐私，遮罩上不该出现。
     try {
         $wifi = $false
         $wired = $false
@@ -2087,8 +2129,8 @@ function Update-NetInfo {
         $kind = 'none'
         if ($wifi) { $kind = 'wifi' }
         elseif ($wired) { $kind = 'eth' }
-        
-        
+        # Wi-Fi 信号强度：netsh 一次约 0.5 秒，所以 30 秒才轮询一次（其余时间用缓存值）。
+        # 输出格式是 "Signal : 87%"，正则只认百分号，跟系统语言无关。读不到就保持未知（画满格）。
         if ($kind -eq 'wifi') {
             $lastProbe = $script:LastWifiProbe
             if ($null -eq $lastProbe) { $lastProbe = [datetime]::MinValue }
@@ -2117,10 +2159,10 @@ function Update-NetInfo {
 }
 
 function Update-AgentState {
-    
-    
-    
-    
+    # 读插件写的会话状态：agents\*.json（每个会话一份；多对话并行时互不覆盖），
+    # 老版本没有 agents\ 目录时退回读 agent-state.json。
+    # 规则：working 一律显示（它此刻就在跑）；waiting 只显示"锁屏开始之后才开始等你"的，
+    # 锁屏前就结束的属于旧闻，不占屏幕。读不到 / 超过 10 分钟 / 格式不对一律忽略。
     $list = New-Object System.Collections.ArrayList
     try {
         $dir = Join-Path $env:LOCALAPPDATA 'CAScreenGuard'
@@ -2150,7 +2192,7 @@ function Update-AgentState {
                 $age = ($now - $since).TotalSeconds
                 if (($age -lt 0) -or ($age -gt 600)) { continue }
                 if (($state -eq 'waiting') -and ($since -lt $lock)) { continue }
-                
+                # precision 缺省 = exact：老版插件/写入器不写这个字段，代表调用方真的知道状态
                 $prec = 'exact'
                 if ([string]$o.precision -eq 'inferred') { $prec = 'inferred' }
                 [void]$list.Add([pscustomobject]@{
@@ -2164,8 +2206,8 @@ function Update-AgentState {
 }
 
 function Update-PowerInfo {
-    
-    
+    # 电量 + 网络一起刷新：两者都挂在同一个 10 秒节流上，没必要各开一条心跳。
+    # 没有电池（台式机、或电池被禁用）就不画电池那半边；电量读不到时只画图标、不写百分比。
     try {
         Update-NetInfo
         Update-AgentState
@@ -2195,7 +2237,7 @@ function Update-PowerInfo {
 }
 
 function Update-Clock {
-    
+    # 只在文案真的变了才赋值：这个函数挂在 250ms 的定时器上，不能每 4 次就重写一遍标签
     try {
         $now = Get-Date
         $timeText = $now.ToString('HH:mm')
@@ -2207,7 +2249,7 @@ function Update-Clock {
             $dateText = $now.ToString('dddd, MMM d', [System.Globalization.CultureInfo]::GetCultureInfo('en-US'))
         }
         if ($script:ClockDate.Text -ne $dateText) { $script:ClockDate.Text = $dateText }
-        
+        # 电量跟着同一条心跳走，但 10 秒才真读一次
         if (((Get-Date) - $script:LastPowerRead).TotalSeconds -ge 10) {
             $script:LastPowerRead = Get-Date
             Update-PowerInfo
@@ -2216,13 +2258,13 @@ function Update-Clock {
 }
 Update-Clock
 
-
+# 主屏尺寸：下面排卡片、时钟都要用它，自检里也要拿它比对遮罩尺寸，所以在这里取一次就够
 $primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
-
-
-
-
+# 按 DPI 放大整套布局，然后把字号设回点数值：
+# 声明 DPI 感知后，控件的坐标/尺寸需要跟着 DPI 放大（否则在高缩放屏上会显得很小）；
+# 而字体是点单位、本来就会随 DPI 变大，所以必须在缩放之后重新设一遍字号，否则会被二次放大。
+# （卡片的位置不在这里定：缩放后尺寸变了，统一交给下面那段"最终定位"处理）
 if ($script:Scale -gt 1.01) {
     $script:Form.Scale((New-Object System.Drawing.SizeF([float]$script:Scale, [float]$script:Scale)))
     $script:Form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
@@ -2235,12 +2277,12 @@ if ($script:Scale -gt 1.01) {
     $script:LockNotice.Font = New-Object System.Drawing.Font($family, [float]10)
 }
 
-
-
-
-
-
-
+# ------------------------------------------------------------------ 时钟与卡片的最终定位
+# 时钟按 Windows 11 锁屏的实测比例排：参考图（Win11 锁屏，1366x768 / 100% 缩放）量得
+#   时间：数字高 71px（=71 DIP）、顶边距屏幕顶 162 DIP，粗体
+#   日期：字形高约 20 DIP（含降部），与时间底边相隔 32 DIP，粗体
+#   两行都水平居中
+# 1 DIP = $script:Scale 个物理像素，所以下面的数字都乘这个系数。
 $ox = $primary.X - $script:Form.Bounds.X
 $oy = $primary.Y - $script:Form.Bounds.Y
 
@@ -2255,8 +2297,8 @@ $clockW = [int]($primary.Width * 0.8)
 $clockX = [int]($ox + ($primary.Width - $clockW) / 2)
 $timeH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockTime.Text, $fontTime).Height
 $dateH = [System.Windows.Forms.TextRenderer]::MeasureText($script:ClockDate.Text, $fontDate).Height
-
-
+# 标签内部有一段行距：字形顶边会比标签顶边低约 0.26em（实测得出），定位时要减掉，
+# 否则时间会比 Win11 的锁屏位置低一大截
 $timeLeadDip = 0.257 * 74 * 96.0 / 72.0
 $dateLeadDip = 0.257 * 17 * 96.0 / 72.0
 $timeTop = [int]($oy + (162 - $timeLeadDip) * $script:Scale)
@@ -2264,7 +2306,7 @@ $dateTop = [int]($oy + (162 + 71 + 32 - $dateLeadDip) * $script:Scale)
 $script:ClockTime.SetBounds($clockX, $timeTop, $clockW, $timeH)
 $script:ClockDate.SetBounds($clockX, $dateTop, $clockW, $dateH)
 
-
+# 卡片：竖直居中（收矮之后就不需要再往下挪了）；只有屏幕太矮、会压到时钟时才让位
 $cardTop = [int]($oy + ($primary.Height - $card.Height) / 2)
 $minTop = $dateTop + $dateH + [int](28 * $script:Scale)
 if ($cardTop -lt $minTop) { $cardTop = $minTop }
@@ -2273,7 +2315,7 @@ if ($cardTop -gt $maxTop -and $maxTop -gt $minTop) { $cardTop = $maxTop }
 $card.Left = [int]($ox + ($primary.Width - $card.Width) / 2)
 $card.Top = $cardTop
 
-
+# 圆角要在 DPI 缩放之后才套用：Region 用的是像素坐标，不会跟着 Scale() 一起放大
 $cardR = [int](18 * $script:Scale)
 if ($cardR -lt 12) { $cardR = 12 }
 $cardPath = New-RoundedPath 0 0 $card.Width $card.Height $cardR
@@ -2283,17 +2325,17 @@ $boxPath = New-RoundedPath 0 0 $box.Width $box.Height ([int]($box.Height / 2))
 $box.Region = New-Object System.Drawing.Region($boxPath)
 $boxPath.Dispose()
 
-
-
-
-
-$edgeX = [int](48 * $script:Scale)          
-$edgeY = [int](40 * $script:Scale)          
-$barH = [int](40 * $script:Scale)           
+# ------------------------------------------------------------------ 左下角 / 右下角
+# 参照 Windows 11 锁屏：左下角「品牌标记 + 产品名」，右下角电量。
+# 直接画在遮罩（$script:Form）的 Paint 里，不另建控件 —— 遮罩背景是壁纸大图，
+# 透明子控件在图上要多一层合成，直接画最稳；位置按遮罩自身尺寸算，天然贴着"整个界面"的角。
+$edgeX = [int](48 * $script:Scale)          # 距左右边缘
+$edgeY = [int](40 * $script:Scale)          # 距底边
+$barH = [int](40 * $script:Scale)           # 标记 / 字标 / 电量共用同一行高度，视觉上对齐
 $script:MarkSize = [int](30 * $script:Scale)
 $script:MarkGap = [int](13 * $script:Scale)
 
-
+# 字标位图只在这里解码一次，之后每次重绘都是 DrawImage（不做任何字体渲染）
 try {
     $wmBytes = [Convert]::FromBase64String($script:WordmarkB64)
     $script:WordmarkImg = [System.Drawing.Image]::FromStream((New-Object System.IO.MemoryStream(,$wmBytes)))
@@ -2304,7 +2346,7 @@ if (($null -ne $script:WordmarkImg) -and ($script:WordmarkImg.Height -gt 0)) {
     $script:WmW = [int]($script:WmH * ($script:WordmarkImg.Width / $script:WordmarkImg.Height))
 }
 
-
+# 电量文字的尺寸：按「100%」这个最宽情况留位，数字变化时电池图标不会左右跳
 $script:PowerPt = 11.5
 $script:PowerIconH = [int](15 * $script:Scale)
 $script:PowerGap = [int](9 * $script:Scale)
@@ -2326,13 +2368,13 @@ $script:Form.Add_Paint({
             $ink = [System.Drawing.Color]::FromArgb(236, 240, 245)
             $bottom = [float]($sender.ClientSize.Height - $script:EdgeY - $script:BarH)
 
-            
+            # ---------- 左下角：品牌标记 + 字标
             $f = [float]$script:MarkSize
             $top = $bottom + ($script:BarH - $f) / 2
             $side = $f * 0.62
             $radius = $f * 0.16
-            
-            
+            # 两块圆角方块：以标记自己的中心为原点排，用 Graphics 的变换旋转，
+            # 画完立刻 ResetTransform —— 后面的字标和电量都按绝对坐标画，不能带着这个变换。
             $markX = [float]($script:EdgeX)
             $layers = @(
                 @{ ox = $f * 0.40; oy = $f * 0.40; color = [System.Drawing.Color]::FromArgb(47, 168, 248) },
@@ -2355,27 +2397,27 @@ $script:Form.Add_Paint({
                 $g.DrawImage($script:WordmarkImg, $rect)
             }
 
-            
+            # ---------- 右下角：电量（电池图标 + 百分比，充电时叠一个小闪电）
             $info = $script:PowerInfo
             if ($null -ne $info) {
                 $h = [float]$script:PowerIconH
-                $bw = [float]($h * 1.9)               
+                $bw = [float]($h * 1.9)               # 含正极小凸头的外框宽
                 $nub = [float]($h * 0.16)
                 $bodyW = [float]($bw - $nub)
                 $r = [float]($h * 0.24)
                 $penW = [float][math]::Max(1.2, $script:Scale * 0.9)
-                
-                
+                # 一圈灰色底板：图标与百分比坐在一块半透明圆角底板上（Windows 锁屏那种），
+                # 壁纸很亮的时候图标也不会糊进背景。
                 $padX = [float](14 * $script:Scale)
                 $padY = [float](6 * $script:Scale)
-                
+                # 网络图标排在电池左边，复刻 Win11 锁屏右下角那一组
                 $netW = [float]($h * 1.15)
                 $netGap = [float]($script:PowerGap)
                 $pillW = [float]($netW + $netGap + $bw + $script:PowerGap + $script:PowerTextW + $padX * 2)
                 $pillH = [float]($h + $padY * 2)
                 $pillX = [float]($sender.ClientSize.Width - $script:EdgeX - $pillW)
                 $pillY = [float]($bottom + ($script:BarH - $pillH) / 2)
-                
+                # 圆角矩形底板（带 R 角）：R 取 10 DIP，Win11 卡片那种观感；不超过半高
                 $pillR = [float][math]::Min($pillH / 2, 10 * $script:Scale)
                 $pill = New-RoundedPath $pillX $pillY $pillW $pillH $pillR
                 $plate = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(44, 24, 26, 30))
@@ -2387,7 +2429,7 @@ $script:Form.Add_Paint({
                 $pill.Dispose()
                 $x = [float]($pillX + $padX)
                 $y = [float]($pillY + $padY)
-                
+                # ---------- 网络状态：Wi-Fi 三弧 / 有线小插头 / 无网斜杠（只看"通不通"，不读 Wi-Fi 名和信号强度）
                 $nk = $script:NetKind
                 if ([string]::IsNullOrEmpty($nk)) { $nk = 'none' }
                 $ncx = [float]($x + $netW / 2)
@@ -2396,8 +2438,8 @@ $script:Form.Add_Paint({
                 if ($nk -eq 'wifi') {
                     $npen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                     $npen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-                    
-                    
+                    # 信号强度：<25% 亮内圈一格、<55% 亮两格，其余三格全亮。
+                    # 没读到（-1）就按满格画，别让图标看起来像"没信号"。
                     $wifiLvl = 3
                     if (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 25)) { $wifiLvl = 1 }
                     elseif (($script:WifiSignal -ge 0) -and ($script:WifiSignal -lt 55)) { $wifiLvl = 2 }
@@ -2408,7 +2450,7 @@ $script:Form.Add_Paint({
                             $g.DrawArc($npen, $arcRect, 220, 100)
                         }
                         else {
-                            
+                            # 没点亮的那几格画淡一档，一眼能看出"信号只有一格"
                             $dimPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(72, $ink)), $npen.Width
                             $dimPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                             $dimPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -2419,10 +2461,10 @@ $script:Form.Add_Paint({
                     $g.FillEllipse((New-Object System.Drawing.SolidBrush $ink), ($ncx - $h * 0.06), ($ncy - $h * 0.06), ($h * 0.12), ($h * 0.12))
                 }
                 else {
-                    
-                    
-                    
-                    
+                    # 有线 / 无网：画一个地球（圆 + 经线 + 赤道），笔画和 Wi-Fi 一样粗 ——
+                    # 试过系统图标字体的 E839/E774/E871，这个尺寸下细得看不清，不如自己画。
+                    # 无网时再给地球拉一道斜杠。
+                    # 地球按图标框的中线居中（$ncy 是 Wi-Fi 弧线的底部基准，直接拿它当圆心会偏下）
                     $gcy = [float]($y + $h * 0.5)
                     $gr = [float]($h * 0.38)
                     $grRect = New-Object System.Drawing.RectangleF(($ncx - $gr), ($gcy - $gr), ($gr * 2), ($gr * 2))
@@ -2455,8 +2497,8 @@ $script:Form.Add_Paint({
                     }
                 }
                 if ($info.Charging) {
-                    
-                    
+                    # 充电中的小闪电：用点数组直接填（PointF 必须走构造器，New-Object 的多参数写法会把 y 当开关）。
+                    # 颜色随底色走：电量条是白/红的时候用近黑，没画电量条时才用琥珀色 —— 保证任何亮度下都看得见。
                     $bx = [float]($x + $bodyW / 2)
                     $by = [float]($y + $h / 2)
                     $k = [float]($h * 0.34)
@@ -2476,7 +2518,7 @@ $script:Form.Add_Paint({
                     $fmt = New-Object System.Drawing.StringFormat
                     $fmt.Alignment = [System.Drawing.StringAlignment]::Far
                     $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
-                    
+                    # 文字在底板里右对齐（右边界 = 底板右边减掉内边距）
                     $txtRect = New-Object System.Drawing.RectangleF(
                         [float]($pillX + $pillW - $padX - $script:PowerTextW),
                         [float]$pillY, [float]$script:PowerTextW, [float]$pillH)
@@ -2487,9 +2529,9 @@ $script:Form.Add_Paint({
         } catch { }
     })
 
-
-
-
+# ---------------------------------------------------------------- 左上角：DSH 会话状态
+# 数据来自 dsh-get-session-status 插件（每个会话一份 json，只有状态、没有对话内容）。
+# 多个对话同时跑时汇总成一条，位置固定在左上角。
 $script:Form.Add_Paint({
         param($sender, $e)
         try {
@@ -2500,8 +2542,8 @@ $script:Form.Add_Paint({
             $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
 
             $isZh = ($script:Lang -eq 'zh')
-            
-            
+            # exact   = 有真钩子，能区分「在跑 / 等你回答 / 这一轮结束」
+            # inferred = 只靠日志活动推断，只知道「不写了」，绝不允许声称「已完成」
             $exact = @($sessions | Where-Object { $_.Precision -eq 'exact' })
             $inferred = @($sessions | Where-Object { $_.Precision -ne 'exact' })
             $asking = @($exact | Where-Object { $_.State -eq 'waiting' -and $_.Reason -eq 'question' })
@@ -2533,7 +2575,7 @@ $script:Form.Add_Paint({
             elseif ($isZh) { $ago = ($mins.ToString() + ' 分钟') }
             else { $ago = ($mins.ToString() + ' min') }
 
-            
+            # 来源名：产品名不是内容，不违反隐私约定
             $who = [string]$picked.Source
             if ([string]::IsNullOrEmpty($who)) { $who = 'Agent' }
             elseif ($who -eq 'dsh-plugin') { $who = 'DSH' }
@@ -2546,7 +2588,7 @@ $script:Form.Add_Paint({
                          else { $(if ($many) { "$who needs you · $n chats" } else { "$who needs you" }) + ' · ' + $ago })
             }
             elseif ($tone -eq 'quiet') {
-                
+                # 只知道「不写了」：说最后活动时间，不说「已完成」
                 $txt = $(if ($isZh) { "$who 最后活动 · " + $ago + '前' } else { "$who last active · " + $ago + ' ago' })
             }
             elseif ($tone -eq 'done') {
@@ -2610,7 +2652,7 @@ $script:PowerInfo = $null
 Update-PowerInfo
 
 
-
+# 密码框描边：聚焦亮蓝、报错转红、封禁不画（颜色已在暗色底上验证过对比度）
 $box.Add_Paint({
         param($sender, $e)
         try {
@@ -2629,7 +2671,7 @@ $box.Add_Paint({
 $script:Txt.Add_GotFocus({ try { $script:BoxPanel.Invalidate() } catch { } })
 $script:Txt.Add_LostFocus({ try { $script:BoxPanel.Invalidate() } catch { } })
 
-
+# ------------------------------------------------------------------ 事件绑定
 $script:Form.Add_Shown({
         try { [ScreenLockNative]::DisableIme($script:Txt.Handle) } catch { }
         if ($script:Txt.Enabled) { $null = $script:Txt.Focus() }
@@ -2646,12 +2688,12 @@ $script:Form.Add_FormClosing({
 
 $script:Form.Add_KeyDown({
         param($sender, $e)
-        
+        # Alt+F4 不予理会
         if ($e.Alt -and ($e.KeyCode -eq [System.Windows.Forms.Keys]::F4)) {
             $e.SuppressKeyPress = $true
             return
         }
-        
+        # Ctrl+Shift+Alt+E：打开「修改解锁密码」（需要授权码）。不再直接退出脚本。
         if ($e.Control -and $e.Alt -and $e.Shift -and ($e.KeyCode -eq [System.Windows.Forms.Keys]::E)) {
             $e.SuppressKeyPress = $true
             Invoke-ChangePasswordFlow
@@ -2659,7 +2701,7 @@ $script:Form.Add_KeyDown({
         }
     })
 
-
+# 输入框万一没有焦点：把字符直接补进去，避免"打字没反应"
 $script:Form.Add_KeyPress({
         param($sender, $e)
         if ($script:Txt.Enabled -and -not $script:Txt.Focused -and $e.KeyChar -and ([int]$e.KeyChar -ge 32)) {
@@ -2673,14 +2715,14 @@ $script:Txt.Add_KeyDown({
         $code = $e.KeyCode
 
         if ($e.Control -and (($code -eq [System.Windows.Forms.Keys]::Back) -or ($code -eq [System.Windows.Forms.Keys]::U))) {
-            
+            # 一键清空（沿用终端 / 命令行的习惯）
             $e.SuppressKeyPress = $true
             $sender.Clear()
             Hide-ErrorMsg
             return
         }
         if ($code -eq [System.Windows.Forms.Keys]::Escape) {
-            
+            # 立即再次熄屏；输入内容保留
             $e.SuppressKeyPress = $true
             Invoke-GoDark
             return
@@ -2697,7 +2739,7 @@ $script:Txt.Add_TextChanged({
         Hide-ErrorMsg
     })
 
-
+# ------------------------------------------------------------------ 定时器
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = 250
 if ($SelfTest) {
@@ -2708,7 +2750,7 @@ else {
     $script:Timer.Add_Tick({ Invoke-GuardTick })
 }
 
-
+# ------------------------------------------------------------------ 自检
 function Add-SelfTestResult {
     param([bool]$Ok, [string]$Name, [string]$Detail)
     $tag = 'PASS'
@@ -2724,7 +2766,7 @@ function Invoke-SelfTestTick {
                 Add-SelfTestResult (($b.Width -ge $primary.Width) -and ($b.Height -ge $primary.Height)) '遮罩尺寸' ("{0}x{1}" -f $b.Width, $b.Height)
                 Add-SelfTestResult ($script:Form.Controls.Count -ge 1) '界面构建' ("控件数 {0}" -f $script:Form.Controls.Count)
                 $tickNow = [ScreenLockNative]::GetLastInputTick()
-                
+                # GetLastInputTick 失败时返回 uint.MaxValue，所以 0 和 MaxValue 都不算"拿到了有效 tick"
                 Add-SelfTestResult (($tickNow -ne 0) -and ($tickNow -ne [uint32]::MaxValue)) '输入空闲接口' ("tick={0}, idle={1}ms" -f $tickNow, [ScreenLockNative]::GetIdleMilliseconds())
                 $script:Txt.Text = 'wrong-password'
                 Invoke-SubmitAttempt
@@ -2766,7 +2808,7 @@ if ($SelfTest) {
         Add-SelfTestResult (($null -ne $reloaded) -and (Test-PasswordRecord -Password 'selftest-dummy-pw' -Record $reloaded)) '配置文件读写' "目录 $tmpDir"
         Add-SelfTestResult (-not (Test-PasswordRecord -Password 'wrong' -Record $script:Config)) '错误密码不会被接受' 'PBKDF2 校验'
 
-        
+        # 完整性层闭环：标记 → 校验通过 → 改一个字节 → 判定为被动过 → 删掉 → 判定为消失
         $savedReg = $script:StoreRegPath
         $savedMirror = $script:StoreMirrorPath
         $script:StoreRegPath = 'HKCU:\Software\CAScreenGuardSelfTest'
@@ -2805,11 +2847,11 @@ if ($SelfTest) {
     }
 }
 
-
-
-
+# ==================================================================
+#  运行
+# ==================================================================
 try {
-    
+    # guard.log 的第一条：这次是以什么模式起来的、键盘钩子开没开。出问题时一眼能对上是哪次运行。
     $runMode = '熄屏锁屏'
     if ($SelfTest) { $runMode = '自检' }
     elseif ($script:AutoReset) { $runMode = '改密码' }
@@ -2820,21 +2862,21 @@ try {
     if (-not $SelfTest) { Initialize-SystemState }
 
     $script:Form.Show()
-    
+    # 关屏/亮屏只投递给我们自己这一个窗口（广播会被每个顶层窗口各处理一份 → 屏幕抖动）
     [ScreenLockNative]::TargetWindow = $script:Form.Handle
-    if (-not $SelfTest) { New-RunningFlag }   
+    if (-not $SelfTest) { New-RunningFlag }   # 正常退出时会删掉它；下次还看到就说明这次没正常结束
     if (-not $SelfTest) {
         if ($script:AutoReset) {
-            
-            
+            # -ResetPassword：这次是专门来改密码的，不熄屏 —— 那就先把壁纸画好再显示窗口，
+            # 免得用户看到"黑幕一闪 → 壁纸出现"
             Install-WallpaperBackground
             $script:State = 'Prompt'
         }
         else {
             [ScreenLockNative]::MonitorOff()
-            
-            
-            
+            # 熄屏请求是异步的（只是投递了一条消息），显示器要一两百毫秒才真的灭掉。
+            # 这里等它一秒钟再动笔：壁纸的合成与重绘全程发生在黑屏之后，
+            # 用户就不会看到那道"从上往下刷出来"的过程。
             try {
                 $deadline = (Get-Date).AddSeconds(1)
                 while ((Get-Date) -lt $deadline) {
@@ -2873,10 +2915,10 @@ finally {
     Stop-SingleInstance
     try { $script:Timer.Stop() } catch { }
     try { $script:Form.Dispose() } catch { }
-    try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   
-    try { if ($script:WordmarkImg) { $script:WordmarkImg.Dispose() } } catch { }   
-    Restore-SystemState        
-    
+    try { if ($script:Wallpaper) { $script:Wallpaper.Dispose() } } catch { }   # 壁纸是本地大图，用完即放
+    try { if ($script:WordmarkImg) { $script:WordmarkImg.Dispose() } } catch { }   # 左下角字标位图
+    Restore-SystemState        # 无论哪种模式都收尾：点亮屏幕 + 恢复屏保/唤醒设置
+    # 收尾那条：解锁、自检、异常，最后都走到这儿。存活秒数用来对"那次到底跑了多久"（不写 PID）。
     try { Write-GuardLog ('退出：存活 ' + [int]((Get-Date) - $script:StartedAt).TotalSeconds + ' 秒') } catch { }
     if ($SelfTest) {
         Write-Host ''

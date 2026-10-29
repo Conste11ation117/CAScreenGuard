@@ -4,6 +4,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.2.0] — 2026-10-29
+
+### 仓库结构
+
+- 按 `src` / `dist` / `tools` / `docs` 重排：手写源码进 `src\`（`CAScreenGuard-demo.ps1` 更名为
+  `src\CAScreenGuard.ps1`），构建产物进 `dist\`，构建与生成脚本进 `tools\`，文档与截图进 `docs\`；
+  接入脚本移到 `src\bridge\`，说明文档变成 `docs\bridge.md`。
+- `.gitignore` 改为只提交 `dist\` 里那两个产物，其余中间文件一律不进库。
+- 构建脚本与发版清单同步到新路径。
+
+### 文档
+
+- 中英 README、SECURITY、桥接说明重写一遍：去掉铺陈和营销式措辞，只留事实；补上此前没写的左上角状态
+  胶囊、就地升级、精度分档。SECURITY 的"支持版本"从 1.0.x 更正为 3.x。
+
+### 安装器
+
+- 欢迎页新增一条可选提示：如果你用 DeepSeek Harness，建议装上配套插件 `dsh-get-session-status`
+  —— 锁屏左上角会显示 agent 是在跑还是在等你，那份文件里只有状态，不含对话内容。
+- 修掉一处裁字：欢迎页简介自上一版加长后框高不够（英文比中文还高一行），中英文按实测重排。
 ## [3.1.0] — 2026-10-28
 
 ### 任意 agent harness 都能上报状态

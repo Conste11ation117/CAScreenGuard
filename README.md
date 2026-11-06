@@ -18,7 +18,7 @@ The mask is backed by your own desktop wallpaper, dimmed and stretched over the 
 time and date above the card laid out to Windows 11's lock-screen proportions. When the wallpaper cannot
 be read it falls back to plain black. Your desktop never shows through.
 
-- Version: **V3.1.1**
+- Version: **V3.2.0**
 - Author: **@Conste11ation117**
 - Requirements: Windows 10 / 11 with Windows PowerShell 5.1 (built in; nothing to install)
 - License: [MIT](LICENSE)
@@ -148,7 +148,7 @@ sources or the exe.
   - no crash log — it was not a crash: someone pressed the power button, signed out or shut down through
     `Ctrl+Alt+Del`, or killed the process. You are advised to change your Windows password, run an
     antivirus scan, check the physical safety of your workspace, and reinstall.
-- `guard.log` records start/exit, sleep-resume handling, failed keep-awake re-issues and UI-thread
+- `guard.log` records start/exit, sleep-resume handling, keep-awake failure/recovery, temporary power-timeout changes and restore failures, plus UI-thread
   exceptions, truncated past 64 KB. It contains no user name, machine name, path or PID, so it is safe to
   attach to a bug report. Only `crash-*.log` carries `user@machine` and the PID; keep that one local.
 
@@ -160,7 +160,7 @@ Run `CAScreenGuard-Setup.exe`:
    (简体中文 / English), and one optional suggestion — if you use DeepSeek Harness, install the companion
    plugin.
 2. Install page: location (with a live "will install to…" preview), unlock password, authorization code,
-   hint, hotkey.
+   hint, hotkey, and whether to disable sleep/hibernate timeouts while locked (on by default).
 
 Behaviour:
 
@@ -176,6 +176,30 @@ Behaviour:
   own "Shortcut key" field — no background process, no autostart entry.
 - Registers in "Apps & features" (publisher `Conste11ation117`). Uninstalling removes the registry keys,
   external credentials, desktop shortcut and the whole installation folder.
+  CAScreenGuard restores any leftover sleep/hibernate timeouts before removing them.
+
+### Staying awake and temporary power settings
+
+- While locked, CAScreenGuard creates a process-level power request
+  (PowerRequestSystemRequired + PowerRequestExecutionRequired) and keeps SetThreadExecutionState as a
+  fallback for older systems. The request is rebuilt every 30 seconds and re-issued immediately after resume.
+  It does not include DisplayRequired, so the monitor can still turn off.
+- New installations enable **Disable sleep/hibernate timeouts while locked** by default. The active plan's
+  AC/DC sleep and hibernate timeouts are set to 0 temporarily, then restored on a normal unlock/exit or
+  uninstall. Original values are saved first to
+  %LOCALAPPDATA%\CAScreenGuard\power-timeouts-original.txt; after a forced kill or power loss, the next
+  start restores them before doing anything else. A failed restore keeps this file for another attempt.
+- An in-place upgrade enables the preference only when it is absent; an existing user choice is preserved.
+  To turn it off manually, set HKCU\Software\CAScreenGuard\PowerGuard to 0; subsequent starts leave the
+  power plan alone.
+- Only the plan recorded in the snapshot is changed; the user's currently selected plan is not switched and
+  no administrator rights are required. If policy or Windows rejects a write, the program logs it and keeps
+  the process-level power request as its fallback.
+- Explicit user actions (Start menu -> Sleep, power button, lid close) are still not blocked. On Modern
+  Standby with battery power, Windows may terminate SYSTEM/EXECUTION requests five minutes after the sleep
+  timeout; periodic rebuilding is how the program keeps trying.
+
+### Location and permissions
 - Installing into a location you cannot write to (e.g. `C:\Program Files`) reports the full failure
   (exception type and `HResult`, selectable and copyable) and offers **Retry as administrator**: after
   UAC, a helper creates the folder and grants write access to your current account, then installation
@@ -271,6 +295,6 @@ account.
   safe, but the old configuration is gone.
 - All input boxes disable the IME; passwords and codes accept half-width characters only.
 - The mask covers the entire virtual desktop (all monitors at once).
-- The system stays awake while locked, which costs battery on a laptop.
+- The system stays awake while locked, which costs battery on a laptop, especially when temporary sleep/hibernate timeout suppression is enabled.
 - Not covered: anyone who can edit the program files, or end the process by other means (another account,
   mounting the disk elsewhere). The flag file only tells you afterwards that something happened.

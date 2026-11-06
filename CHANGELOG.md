@@ -1,9 +1,25 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.2.0] — 2026-11-06 Sonnet
+
+### Keep-awake and power timeouts
+
+- Replaced the thread-only wake request with a process-level `PowerCreateRequest` / `PowerSetRequest`
+  (SystemRequired + ExecutionRequired), keeping `SetThreadExecutionState` as a fallback. Startup, periodic
+  checks and sleep-resume all verify the return value; failures are retried on the next tick, and only
+  state changes (failed/recovered) are logged.
+- Added an installer option, **Disable sleep/hibernate timeouts while locked**, enabled by default. AC/DC
+  sleep and hibernate timeouts are backed up before being set to 0, then restored on normal exit and
+  uninstall. After an abnormal exit, the next start first attempts the same restore; a failed restore keeps
+  the snapshot for a later attempt.
+- In-place upgrades preserve an existing `PowerGuard` preference and enable it only when absent. Uninstall
+  restores leftover power timeouts before deleting state files.
+- The older claim that the program never touched the power plan described the previous implementation; the
+  temporary modification and restore behavior above is now authoritative.
 ## [3.1.1] — 2026-10-29 Sonnet
 
 ### Repository layout

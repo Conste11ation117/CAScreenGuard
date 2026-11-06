@@ -98,6 +98,7 @@ public static class Str
         { "k94", "\n\n为保护现有凭据，本次没有做任何修改。要重装的话，请先在「设置 → 应用」里卸载 CAScreenGuard。" },
         { "k68", "CAScreenGuard 只关显示器（不休眠、不锁会话、保持系统唤醒），在最上层盖一层全屏遮罩挡住桌面内容；输对解锁密码才会恢复。它是视觉遮挡，不是安全边界，详见 README。\n\n获取新版本：github.com/Conste11ation117/CAScreenGuard/releases" },
         { "k96", "可选：DeepSeek Harness用户安装插件：dsh-get-session-status可获得本软件的完整体验：锁屏左上角会显示 agent 是在跑还是在等你。" },
+        { "k97", "锁屏期间临时关闭睡眠/休眠超时（退出后自动还原）" },
         { "k69", "欢迎" },
         { "k70", "上一页" },
         { "k71", "请只使用本程序提供的卸载程序卸载，不要使用第三方管理程序卸载，否则可能导致系统关键组件缺失。" },
@@ -195,6 +196,7 @@ public static class Str
         { "k94", "\n\nNothing was modified this time, to protect the existing credentials. To reinstall, uninstall CAScreenGuard from Settings > Apps first." },
         { "k68", "CAScreenGuard turns the monitor off (no sleep, no session lock, the machine stays awake) and covers the desktop with a full-screen mask; only the unlock password brings it back. It is a visual barrier, not a security boundary. See the README.\n\nNew versions: github.com/Conste11ation117/CAScreenGuard/releases" },
         { "k96", "Optional: DeepSeek Harness users can install the plugin dsh-get-session-status for the complete experience - the lock screen then shows whether the agent is working or waiting for you." },
+        { "k97", "Disable sleep/hibernate timeouts while locked (restored on exit)" },
         { "k69", "Welcome" },
         { "k70", "Back" },
         { "k71", "Please uninstall only with the uninstaller provided by this program. Do not remove it with third-party uninstall managers, or key system components may end up missing." },
@@ -238,7 +240,7 @@ public class CAScreenGuardInstaller
     internal const string LicenseLeaf = "LICENSE";
     internal const string LnkLeaf = "CAScreenGuard.lnk";
     internal const string AppName = "CAScreenGuard";
-    internal const string AppVersion = "V3.1.1";
+    internal const string AppVersion = "V3.2.0";
     const string CfgLeaf = ".cascreenguard.config.json";
     const string StoreKey = @"Software\CAScreenGuard";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CAScreenGuard";
@@ -540,8 +542,14 @@ public class CAScreenGuardInstaller
         string uninst = Path.Combine(dir, "uninstall.exe");
         try { File.Copy(Application.ExecutablePath, uninst, true); } catch { }
 
-        // 只补一个 Version；Token/MarkerKey/AuthSalt/AuthHash/Provisioned/Lang/Hotkey 原样保留
-        using (RegistryKey k = Registry.CurrentUser.CreateSubKey(StoreKey)) { k.SetValue("Version", AppVersion); }
+        // 只补一个 Version；Token/MarkerKey/AuthSalt/AuthHash/Provisioned/Lang/Hotkey 原样保留。
+        // 旧版没有 PowerGuard，就地升级又不走向导：按新装时的默认勾选补一次，
+        // 免得升级完新功能形同没开；已经写过（用户设过 0/1）的一律不覆盖。
+        using (RegistryKey k = Registry.CurrentUser.CreateSubKey(StoreKey))
+        {
+            k.SetValue("Version", AppVersion);
+            if (k.GetValue("PowerGuard") == null) { k.SetValue("PowerGuard", "1"); }
+        }
         try
         {
             using (RegistryKey u = Registry.CurrentUser.CreateSubKey(UninstallKey))
@@ -649,6 +657,48 @@ public class CAScreenGuardInstaller
         get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CAScreenGuard"); }
     }
 
+    // 卸载时若上次是异常退出，电源超时可能还停在 0；删现场文件之前先还原，
+    // 否则用户卸载完之后系统会永久不休眠。只写回原方案，不切换用户当前方案。
+    [DllImport("powrprof.dll")]
+    static extern uint PowerGetActiveScheme(IntPtr UserRootPowerKey, out IntPtr ActivePolicyGuid);
+    [DllImport("powrprof.dll")]
+    static extern uint PowerWriteACValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, uint Value);
+    [DllImport("powrprof.dll")]
+    static extern uint PowerWriteDCValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, uint Value);
+    [DllImport("powrprof.dll")]
+    static extern uint PowerSetActiveScheme(IntPtr UserRootPowerKey, ref Guid SchemeGuid);
+    [DllImport("kernel32.dll")]
+    static extern IntPtr LocalFree(IntPtr hMem);
+
+    static void RestorePowerTimeoutsBeforeUninstall()
+    {
+        try
+        {
+            string path = Path.Combine(StateDir, "power-timeouts-original.txt");
+            if (!File.Exists(path)) { return; }
+            string[] p = File.ReadAllText(path).Trim().Split(',');
+            if (p.Length != 5) { return; }
+            Guid scheme = new Guid(p[0]);
+            Guid sub = new Guid("238c9fa8-0aad-41ed-83f4-97be242c8f20");
+            Guid st = new Guid("29f6c1db-86da-48c5-9fdb-f2b67b1f44da");
+            Guid hi = new Guid("9d7815a6-7ee4-497e-8888-515a05f02364");
+            uint sac = uint.Parse(p[1]), sdc = uint.Parse(p[2]), hac = uint.Parse(p[3]), hdc = uint.Parse(p[4]);
+            PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, sac);
+            PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, sdc);
+            PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, hac);
+            PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, hdc);
+            IntPtr cur = IntPtr.Zero;
+            try
+            {
+                if (PowerGetActiveScheme(IntPtr.Zero, out cur) == 0 && cur != IntPtr.Zero &&
+                    (Guid)Marshal.PtrToStructure(cur, typeof(Guid)) == scheme)
+                { PowerSetActiveScheme(IntPtr.Zero, ref scheme); }
+            }
+            finally { if (cur != IntPtr.Zero) { LocalFree(cur); } }
+        }
+        catch { }
+    }
+
     // 只删运行现场的那几个文件，绝不整树删 StateDir ——
     // 用默认安装位置时 StateDir 正是安装目录的上一层，整树删会把安装目录一起端掉。
     static void RemoveStateFiles()
@@ -656,7 +706,7 @@ public class CAScreenGuardInstaller
         try
         {
             if (!Directory.Exists(StateDir)) { return; }
-            foreach (string f in new string[] { "running.flag", "screen-saver-original.json", "tick-errors.log" })
+            foreach (string f in new string[] { "running.flag", "screen-saver-original.json", "power-timeouts-original.txt", "tick-errors.log" })
             {
                 try
                 {
@@ -692,10 +742,11 @@ public class CAScreenGuardInstaller
     // dirPreparedByUs：提权助手刚替我们建好目录、并把写权限授给了当前用户，这一次要认下它
     public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey)
     {
-        return Install(baseDir, lockPwd, authCode, authHint, createLink, hotkeyKey, false);
+        // /silent 没有这个选项，按关闭处理；密码与授权码依旧不进命令行。
+        return Install(baseDir, lockPwd, authCode, authHint, createLink, hotkeyKey, false, false);
     }
 
-    public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey, bool dirPreparedByUs)
+    public static string Install(string baseDir, string lockPwd, string authCode, string authHint, bool createLink, string hotkeyKey, bool dirPreparedByUs, bool powerGuard)
     {
         string dir = Path.Combine(baseDir, SubFolderName);
         // 顺序有讲究：**先确认新位置能用，再销毁旧安装**。
@@ -789,6 +840,9 @@ public class CAScreenGuardInstaller
             k.SetValue("Lang", Str.Lang);
             k.SetValue("Hotkey", hotkeyKey == null ? "" : hotkeyKey.Trim());
             k.SetValue("Version", AppVersion);
+            // 只写注册表、不写 store.json 镜像：镜像由脚本按固定 7 字段重写，
+            // 多放一个偏好值会在改密码/封禁时被悄悄丢掉；注册表整树在卸载时会被删干净。
+            k.SetValue("PowerGuard", powerGuard ? "1" : "0");
             // 重新安装 = 全新的开始：把「认证码永久封禁」一并清掉，
             // 否则那次的记录会跟着这台机器一直走下去（警告里让用户重新安装，就得真能解决）
             k.DeleteValue("AuthBan", false);
@@ -885,6 +939,7 @@ public class CAScreenGuardInstaller
         }
         string dir = InstalledDir();
         bool leftovers = false;
+        RestorePowerTimeoutsBeforeUninstall();   // 先还原可能残留的电源超时，再删现场文件
         leftovers = RemoveExternalCredentials();
         // 快捷方式删不掉同样算残留；删掉后要通知资源管理器，
         // 否则它注册的全局快捷键会一直残留到注销/重启
@@ -1126,7 +1181,7 @@ public class SetupForm : Form
     Label lblWelcome, lblAuthor, lblIntro, lblPlugin, lblAv, lblLang;
     LinkLabel lnkReadme;
     TextBox txtDir, txtPwd, txtPwd2, txtAuth, txtAuth2, txtHint, txtHotkey;
-    CheckBox chkLink;
+    CheckBox chkLink, chkPower;
     Label lblError, lblFinal, lblHotkeyHint;
     Button btnInstall, btnBrowse;
     float s = 1F;
@@ -1180,7 +1235,7 @@ public class SetupForm : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.White;
-        ClientSize = new Size(S(560), S(620));
+        ClientSize = new Size(S(560), S(664));
 
         AddLabel(Str.S("k20") + CAScreenGuardInstaller.AppName, 28, 18, 400, 34, 16F, FontStyle.Bold,
                  Color.FromArgb(27, 35, 48), ContentAlignment.MiddleLeft);
@@ -1257,20 +1312,33 @@ public class SetupForm : Form
         chkLink.CheckedChanged += new EventHandler(OnLinkChanged);
         pageInstall.Controls.Add(chkLink);
 
+        // 默认勾上：锁屏期间临时把睡眠/休眠超时置 0，退出（或下次启动）自动还原。
+        // 文案按中英文各量过一次，9.5pt / 480px 内都是单行，不会像欢迎页那样被裁。
+        chkPower = new CheckBox();
+        chkPower.Text = Str.S("k97");
+        chkPower.Checked = true;
+        chkPower.AutoSize = false;
+        chkPower.Location = new Point(S(28), S(484));
+        chkPower.Size = new Size(S(504), S(26));
+        chkPower.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
+        chkPower.ForeColor = lc;
+        chkPower.BackColor = Color.Transparent;
+        pageInstall.Controls.Add(chkPower);
+
         AddLabel(Str.S("k33"),
-                 28, 484, 504, 32, 8.5F, FontStyle.Regular, Color.FromArgb(192, 57, 43), ContentAlignment.TopLeft);
+                 28, 518, 504, 32, 8.5F, FontStyle.Regular, Color.FromArgb(192, 57, 43), ContentAlignment.TopLeft);
 
         AddLabel(Str.S("k71"),
-                 28, 518, 504, 34, 8.5F, FontStyle.Regular, Color.FromArgb(176, 96, 0), ContentAlignment.TopLeft);
+                 28, 552, 504, 34, 8.5F, FontStyle.Regular, Color.FromArgb(176, 96, 0), ContentAlignment.TopLeft);
 
-        lblError = AddLabel("", 28, 552, 504, 22, 9F, FontStyle.Regular, Color.FromArgb(192, 57, 43), ContentAlignment.MiddleLeft);
+        lblError = AddLabel("", 28, 586, 504, 22, 9F, FontStyle.Regular, Color.FromArgb(192, 57, 43), ContentAlignment.MiddleLeft);
 
-        AddLabel("@Conste11ation117　2026.10.14", 28, 580, 300, 26, 8.5F, FontStyle.Regular,
+        AddLabel("@Conste11ation117　2026.10.14", 28, 614, 300, 26, 8.5F, FontStyle.Regular,
                  Color.FromArgb(150, 158, 170), ContentAlignment.MiddleLeft);
 
         btnInstall = new Button();
         btnInstall.Text = Str.S("k34");
-        btnInstall.Location = new Point(S(352), S(578));
+        btnInstall.Location = new Point(S(352), S(612));
         btnInstall.Size = new Size(S(88), S(30));
         btnInstall.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
         btnInstall.Click += new EventHandler(OnInstall);
@@ -1278,7 +1346,7 @@ public class SetupForm : Form
 
         Button btnCancel = new Button();
         btnCancel.Text = Str.S("k70");
-        btnCancel.Location = new Point(S(448), S(578));
+        btnCancel.Location = new Point(S(448), S(612));
         btnCancel.Size = new Size(S(84), S(30));
         btnCancel.Font = new Font(UIFont, 9.5F, FontStyle.Regular, GraphicsUnit.Point);
         btnCancel.Click += new EventHandler(OnBack);   // 不关窗，回欢迎页
@@ -1483,7 +1551,7 @@ public class SetupForm : Form
     {
         pageWelcome.Visible = !install;
         pageInstall.Visible = install;
-        ClientSize = install ? new Size(S(560), S(620)) : new Size(S(560), S(404));
+        ClientSize = install ? new Size(S(560), S(664)) : new Size(S(560), S(404));
         if (install) { AcceptButton = btnInstall; CancelButton = null; }
         else { AcceptButton = FindButton("btnNext", pageWelcome); CancelButton = FindButton("btnQuit", pageWelcome); }
     }
@@ -1559,13 +1627,13 @@ public class SetupForm : Form
     }
 
     // 跑一次安装，把结果翻译成人能看的话。canElevate 只在"没权限"这一种失败上为 true。
-    bool TryInstall(string baseDir, string pwd, string auth, string hint, bool link, string hotkey, bool dirPrepared,
+    bool TryInstall(string baseDir, string pwd, string auth, string hint, bool link, string hotkey, bool dirPrepared, bool powerGuard,
                     out string msg, out string failure, out bool canElevate)
     {
         msg = ""; failure = ""; canElevate = false;
         try
         {
-            msg = CAScreenGuardInstaller.Install(baseDir, pwd, auth, hint, link, hotkey, dirPrepared);
+            msg = CAScreenGuardInstaller.Install(baseDir, pwd, auth, hint, link, hotkey, dirPrepared, powerGuard);
             return true;
         }
         catch (UnauthorizedAccessException ex) { canElevate = true; failure = String.Format(Str.S("k60"), Describe(ex)); }
@@ -1668,7 +1736,7 @@ public class SetupForm : Form
         Status(Str.S("k72"));
         try
         {
-            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, false, out msg, out failure, out canElevate);
+            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, chkPower.Checked, false, out msg, out failure, out canElevate);
             if (!ok)
             {
                 // 写不进去 → 问一句要不要以管理员身份再来一次（盾牌按钮）；别的失败就只是报告
@@ -1682,7 +1750,7 @@ public class SetupForm : Form
                         else
                         {
                             Status(Str.S("k72"));
-                            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, true, out msg, out failure, out canElevate);
+                            ok = TryInstall(full, pwd, auth, hint, chkLink.Checked, hotkey, chkPower.Checked, true, out msg, out failure, out canElevate);
                             if (!ok) { failure = Str.S("k78") + failure; }
                         }
                         if (!ok) { ShowFailure(failure, false); }

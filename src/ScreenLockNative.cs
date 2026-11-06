@@ -101,17 +101,219 @@ public static class ScreenLockNative
     // ---------------- keep the machine awake ----------------
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint SetThreadExecutionState(uint esFlags);
+    [DllImport("kernel32.dll", EntryPoint = "SetLastError")]
+    private static extern void SetLastErrorNative(uint dwErrCode);
 
-    // 这两个 API 是按线程生效的，返回值 0 = 调用失败。调用方必须能知道"到底发出了没有"：
-    // 睡眠/休眠恢复后请求可能已经不作数，要靠返回值判断该不该重发（不能把返回值丢掉）。
+    private const uint ES_CONTINUOUS = 0x80000000u;
+    private const uint ES_SYSTEM_REQUIRED = 0x00000001u;
+
+    // ES_SYSTEM_REQUIRED 只是"重置系统空闲计时器"，而且按线程生效。Modern Standby (S0) 上息屏之后，
+    // 光靠它挡不住系统进低功耗、也挡不住"在此时间后休眠"到期，桌面进程还会被挂起。
+    // 所以另外挂一个进程级电源请求（句柄级、不绑线程）：SystemRequired 要求系统别睡，
+    // ExecutionRequired 要求别把本进程挂起。两者都不含 DisplayRequired，屏幕照熄。
+    [StructLayout(LayoutKind.Sequential)]
+    private struct REASON_CONTEXT_DETAILED
+    {
+        public IntPtr LocalizedReasonModule;
+        public uint LocalizedReasonId;
+        public uint ReasonStringCount;
+        public IntPtr ReasonStrings;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct REASON_CONTEXT
+    {
+        [FieldOffset(0)] public uint Version;
+        [FieldOffset(4)] public uint Flags;
+        [FieldOffset(8)] public REASON_CONTEXT_DETAILED Detailed;
+        [FieldOffset(8)] public IntPtr SimpleReasonString;   // union：与 Detailed 共用同一块内存
+    }
+
+    private const uint POWER_REQUEST_CONTEXT_VERSION = 0;
+    private const uint POWER_REQUEST_CONTEXT_SIMPLE_STRING = 1;
+    private const int PowerRequestSystemRequired = 1;
+    private const int PowerRequestExecutionRequired = 3;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr PowerCreateRequest(ref REASON_CONTEXT Context);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool PowerSetRequest(IntPtr PowerRequest, int RequestType);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool PowerClearRequest(IntPtr PowerRequest, int RequestType);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    private static readonly object awakeSync = new object();
+    private static IntPtr powerRequest = IntPtr.Zero;
+    private static IntPtr reasonString = IntPtr.Zero;
+    private static int systemRequests = 0;
+    private static int executionRequests = 0;
+
+    private static bool IsValidRequestHandle(IntPtr h)
+    {
+        return h != IntPtr.Zero && h != new IntPtr(-1);
+    }
+
+    private static void ClearPowerRequest()
+    {
+        try
+        {
+            if (IsValidRequestHandle(powerRequest))
+            {
+                while (systemRequests > 0) { PowerClearRequest(powerRequest, PowerRequestSystemRequired); systemRequests--; }
+                while (executionRequests > 0) { PowerClearRequest(powerRequest, PowerRequestExecutionRequired); executionRequests--; }
+                CloseHandle(powerRequest);
+            }
+        }
+        catch { }
+        powerRequest = IntPtr.Zero;
+        systemRequests = 0;
+        executionRequests = 0;
+        if (reasonString != IntPtr.Zero)
+        {
+            try { Marshal.FreeHGlobal(reasonString); } catch { }
+            reasonString = IntPtr.Zero;
+        }
+    }
+
+    // 每次重发都重建：睡眠/休眠会作废旧请求，Modern Standby + 电池供电还会在睡眠超时
+    // 5 分钟后终止 System/Execution 请求，重建才能续上。引用计数始终是 0 或 1。
+    private static bool EnsurePowerRequest()
+    {
+        ClearPowerRequest();
+        try
+        {
+            REASON_CONTEXT ctx = new REASON_CONTEXT();
+            ctx.Version = POWER_REQUEST_CONTEXT_VERSION;
+            ctx.Flags = POWER_REQUEST_CONTEXT_SIMPLE_STRING;
+            reasonString = Marshal.StringToHGlobalUni("CAScreenGuard is keeping long-running work alive while the screen is off");
+            ctx.SimpleReasonString = reasonString;
+            IntPtr h = PowerCreateRequest(ref ctx);
+            if (!IsValidRequestHandle(h)) { ClearPowerRequest(); return false; }
+            powerRequest = h;
+            if (PowerSetRequest(h, PowerRequestSystemRequired)) systemRequests++;
+            if (PowerSetRequest(h, PowerRequestExecutionRequired)) executionRequests++;
+            // ExecutionRequired 是 Win8 才有的类型，老系统上拿不到不算失败
+            return systemRequests > 0;
+        }
+        catch { ClearPowerRequest(); return false; }
+    }
+
+    // 返回值表示"进程级电源请求是否建立"。STES 每次仍重发，作为老系统上的兜底：
+    // 它成功时返回上一次的状态，首次成功也可能是 0，不能拿返回值直接判成败。
     public static bool KeepSystemAwake()
     {
-        return SetThreadExecutionState(0x80000000u | 0x00000001u) != 0;   // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+        lock (awakeSync) { return EnsurePowerRequest(); }
     }
 
     public static bool ReleaseKeepAwake()
     {
-        return SetThreadExecutionState(0x80000000u) != 0;                 // ES_CONTINUOUS
+        SetLastErrorNative(0);
+        uint prev = SetThreadExecutionState(ES_CONTINUOUS);
+        bool threadOk = (prev != 0) || (Marshal.GetLastWin32Error() == 0);
+        lock (awakeSync) { ClearPowerRequest(); }
+        return threadOk;
+    }
+
+    // ---------------- 电源方案：睡眠 / 休眠超时 ----------------
+    // 只改活动方案 SUB_SLEEP 下的两个设置（AC / DC 各一份），不改电源方案本身，也不需要提权。
+    // 调用方必须先把原值落盘，退出或崩溃后靠那份文件还原；失败一律返回 false，让调用方降级。
+    private static readonly Guid SUB_SLEEP_GUID = new Guid("238c9fa8-0aad-41ed-83f4-97be242c8f20");
+    private static readonly Guid STANDBYIDLE_GUID = new Guid("29f6c1db-86da-48c5-9fdb-f2b67b1f44da");
+    private static readonly Guid HIBERNATEIDLE_GUID = new Guid("9d7815a6-7ee4-497e-8888-515a05f02364");
+
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerGetActiveScheme(IntPtr UserRootPowerKey, out IntPtr ActivePolicyGuid);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadACValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, out uint Value);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerReadDCValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, out uint Value);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerWriteACValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, uint Value);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerWriteDCValueIndex(IntPtr RootPowerKey, ref Guid SchemeGuid, ref Guid SubGroupGuid, ref Guid SettingGuid, uint Value);
+    [DllImport("powrprof.dll")]
+    private static extern uint PowerSetActiveScheme(IntPtr UserRootPowerKey, ref Guid SchemeGuid);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr hMem);
+
+    private static Guid ActiveSchemeGuid()
+    {
+        IntPtr p = IntPtr.Zero;
+        try
+        {
+            if (PowerGetActiveScheme(IntPtr.Zero, out p) != 0 || p == IntPtr.Zero) return Guid.Empty;
+            return (Guid)Marshal.PtrToStructure(p, typeof(Guid));
+        }
+        catch { return Guid.Empty; }
+        finally { if (p != IntPtr.Zero) LocalFree(p); }
+    }
+
+    // 快照格式：方案GUID,AC睡眠秒,DC睡眠秒,AC休眠秒,DC休眠秒。读不到返回 null。
+    public static string GetPowerTimeoutSnapshot()
+    {
+        try
+        {
+            Guid scheme = ActiveSchemeGuid();
+            if (scheme == Guid.Empty) return null;
+            Guid sub = SUB_SLEEP_GUID, st = STANDBYIDLE_GUID, hi = HIBERNATEIDLE_GUID;
+            uint sac, sdc, hac, hdc;
+            if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, out sac) != 0) return null;
+            if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, out sdc) != 0) return null;
+            if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, out hac) != 0) return null;
+            if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, out hdc) != 0) return null;
+            return scheme.ToString("D") + "," + sac + "," + sdc + "," + hac + "," + hdc;
+        }
+        catch { return null; }
+    }
+
+    private static bool WriteTimeouts(Guid scheme, uint sac, uint sdc, uint hac, uint hdc)
+    {
+        Guid sub = SUB_SLEEP_GUID, st = STANDBYIDLE_GUID, hi = HIBERNATEIDLE_GUID;
+        bool ok = true;
+        if (PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, sac) != 0) ok = false;
+        if (PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref st, sdc) != 0) ok = false;
+        if (PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, hac) != 0) ok = false;
+        if (PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref hi, hdc) != 0) ok = false;
+        // 只在该方案仍活动时刷新；用户中途换了方案就不要把他切回来
+        Guid active = ActiveSchemeGuid();
+        if (active == scheme && PowerSetActiveScheme(IntPtr.Zero, ref scheme) != 0) ok = false;
+        return ok;
+    }
+
+    private static string[] ParseSnapshot(string snapshot)
+    {
+        if (string.IsNullOrEmpty(snapshot)) return null;
+        string[] p = snapshot.Split(',');
+        if (p.Length != 5) return null;
+        try
+        {
+            Guid g = new Guid(p[0]);
+            if (g == Guid.Empty) return null;
+            uint v;
+            for (int i = 1; i < 5; i++) { if (!uint.TryParse(p[i], out v)) return null; }
+            return p;
+        }
+        catch { return null; }
+    }
+
+    // 临时把四项超时置 0（从不），只改快照里记下的那个方案。
+    public static bool DisablePowerTimeouts(string snapshot)
+    {
+        string[] p = ParseSnapshot(snapshot);
+        if (p == null) return false;
+        try { return WriteTimeouts(new Guid(p[0]), 0, 0, 0, 0); }
+        catch { return false; }
+    }
+
+    // 把快照里的四个值写回原方案；失败时调用方要保留备份文件，下次启动再补。
+    public static bool RestorePowerTimeouts(string snapshot)
+    {
+        string[] p = ParseSnapshot(snapshot);
+        if (p == null) return false;
+        try { return WriteTimeouts(new Guid(p[0]), uint.Parse(p[1]), uint.Parse(p[2]), uint.Parse(p[3]), uint.Parse(p[4])); }
+        catch { return false; }
     }
 
     // ---------------- 隐藏窗口跑一个命令并收下输出 ----------------

@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 
 
-$script:AppVersion = 'V3.1.1'
+$script:AppVersion = 'V3.2.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -388,6 +388,12 @@ $script:GuardLogPath = Join-Path $script:StateDir 'guard.log'
 $script:LastAwakeTick = [datetime]::MinValue
 $script:StartedAt = Get-Date          
 $script:LastTickWall = Get-Date
+$script:AwakeFailed = $false          
+
+
+$script:PowerPresavePath = Join-Path $script:StateDir 'power-timeouts-original.txt'
+$script:PowerGuardEnabled = $false     
+$script:PowerGuardActive = $false      
 
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
@@ -1229,6 +1235,29 @@ function Invoke-SubmitAttempt {
     }
 }
 
+function Request-KeepAwake {
+    
+    
+    
+    param([datetime]$Now, [string]$Why)
+    $ok = $false
+    try { $ok = [ScreenLockNative]::KeepSystemAwake() } catch { $ok = $false }
+    if ($ok) {
+        $script:LastAwakeTick = $Now
+        if ($script:AwakeFailed) {
+            $script:AwakeFailed = $false
+            Write-GuardLog '唤醒请求已恢复'
+        }
+    }
+    else {
+        if (-not $script:AwakeFailed) {
+            $script:AwakeFailed = $true
+            Write-GuardLog ('唤醒请求失败（' + $Why + '：进程级电源请求未能建立），将在下一个 tick 重试')
+        }
+    }
+    return $ok
+}
+
 function Invoke-GuardTick {
     try {
         if ($script:AllowClose) { return }
@@ -1240,8 +1269,7 @@ function Invoke-GuardTick {
         $gap = ($now - $script:LastTickWall).TotalSeconds
         if ($gap -gt 5) {
             Write-GuardLog ('定时器中断 {0:N1} 秒，按"可能刚从睡眠/休眠恢复"处理：重新保持唤醒并复位遮罩' -f $gap)
-            try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
-            $script:LastAwakeTick = $now
+            $null = Request-KeepAwake -Now $now -Why '睡眠恢复'
             try { [ScreenLockNative]::ReassertTopMost($script:Form.Handle) } catch { }
             if ($script:State -eq 'Away') {
                 $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
@@ -1254,10 +1282,7 @@ function Invoke-GuardTick {
         
         
         if (($now - $script:LastAwakeTick).TotalSeconds -ge 30) {
-            $script:LastAwakeTick = $now
-            $awakeOk = $false
-            try { $awakeOk = [ScreenLockNative]::KeepSystemAwake() } catch { $awakeOk = $false }
-            if (-not $awakeOk) { Write-GuardLog '唤醒请求重发失败（SetThreadExecutionState 返回 0）' }
+            $null = Request-KeepAwake -Now $now -Why '周期复查'
         }
 
         $idle = [uint32][ScreenLockNative]::GetIdleMilliseconds()
@@ -1308,6 +1333,71 @@ function Invoke-GuardTick {
 }
 
 
+function Get-PowerGuardPreference {
+    
+    
+    try {
+        $v = (Get-ItemProperty -LiteralPath $script:StoreRegPath -Name 'PowerGuard' -ErrorAction Stop).PowerGuard
+        return ("$v" -eq '1')
+    } catch { return $false }
+}
+
+function Restore-PendingPowerTimeouts {
+    
+    
+    try {
+        if (-not (Test-Path -LiteralPath $script:PowerPresavePath)) { return }
+        $snap = [System.IO.File]::ReadAllText($script:PowerPresavePath, [System.Text.Encoding]::UTF8).Trim()
+        if ([string]::IsNullOrEmpty($snap)) { return }
+        $ok = $false
+        try { $ok = [ScreenLockNative]::RestorePowerTimeouts($snap) } catch { }
+        if ($ok) {
+            Remove-Item -LiteralPath $script:PowerPresavePath -Force -ErrorAction SilentlyContinue
+            Write-GuardLog '电源策略：睡眠/休眠超时已还原'
+        }
+        else {
+            Write-GuardLog '电源策略：还原失败，保留备份待下次启动重试'
+        }
+    } catch { }
+}
+
+function Enable-TemporaryPowerTimeouts {
+    if ($script:PowerGuardActive) { return }
+    $snap = $null
+    try { $snap = [ScreenLockNative]::GetPowerTimeoutSnapshot() } catch { }
+    if ([string]::IsNullOrEmpty($snap)) {
+        Write-GuardLog '电源策略：读取当前超时失败，跳过临时修改（电源请求仍然生效）'
+        return
+    }
+    
+    try {
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        [System.IO.File]::WriteAllText($script:PowerPresavePath, $snap, (New-Object System.Text.UTF8Encoding($false)))
+    }
+    catch {
+        Write-GuardLog '电源策略：原值备份写入失败，跳过临时修改'
+        return
+    }
+    $ok = $false
+    try { $ok = [ScreenLockNative]::DisablePowerTimeouts($snap) } catch { }
+    if ($ok) {
+        $script:PowerGuardActive = $true
+        Write-GuardLog '电源策略：锁屏期间已临时关闭睡眠/休眠超时'
+    }
+    else {
+        
+        $rolled = $false
+        try { $rolled = [ScreenLockNative]::RestorePowerTimeouts($snap) } catch { }
+        if ($rolled) {
+            Write-GuardLog '电源策略：临时修改失败，已回滚（电源请求仍然生效）'
+            try { Remove-Item -LiteralPath $script:PowerPresavePath -Force -ErrorAction SilentlyContinue } catch { }
+        }
+        else {
+            Write-GuardLog '电源策略：临时修改失败且回滚未完成，保留备份待下次启动重试'
+        }
+    }
+}
+
 function Restore-PendingScreenSaverSave {
     
     
@@ -1336,6 +1426,8 @@ function Save-ScreenSaverPrerestore {
 
 function Initialize-SystemState {
     Restore-PendingScreenSaverSave          
+    Restore-PendingPowerTimeouts            
+    $script:PowerGuardEnabled = Get-PowerGuardPreference
     try { $script:OrigScreenSaver = [ScreenLockNative]::GetScreenSaverActive() } catch { $script:OrigScreenSaver = $null }
     try {
         $script:OrigScreenSaverReg = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction Stop).ScreenSaveActive
@@ -1345,8 +1437,9 @@ function Initialize-SystemState {
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
     
     
-    try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
-    $script:LastAwakeTick = Get-Date
+    $null = Request-KeepAwake -Now (Get-Date) -Why '启动'
+    
+    if ($script:PowerGuardEnabled) { Enable-TemporaryPowerTimeouts }
     
     
     
@@ -1395,6 +1488,7 @@ function Restore-SystemState {
     }
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
+    Restore-PendingPowerTimeouts             
     try { $null = [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 

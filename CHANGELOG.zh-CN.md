@@ -1,9 +1,20 @@
-# Changelog
+﻿# Changelog
 
 本项目的重要变更都记录在这里。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.2.0] — 2026-11-06 Sonnet
+
+### 保持唤醒与电源超时
+
+- 改用进程级 `PowerCreateRequest` / `PowerSetRequest`（SystemRequired + ExecutionRequired），
+  `SetThreadExecutionState` 保留作兜底。启动、周期复查与睡眠恢复统一检查返回值，失败立即在下一个 tick
+  重试，日志只记失败/恢复两次状态变化，避免刷屏。
+- 安装页新增「锁屏期间临时关闭睡眠/休眠超时」勾选项，默认开启。AC/DC 睡眠与休眠超时先备份再临时置 0，
+  正常退出与卸载时还原；异常退出留下的原值快照会在下次启动先补还原，失败则保留待重试。
+- 就地升级不覆盖已有 `PowerGuard` 偏好，只有缺值时补为开启。卸载会先还原可能残留的电源超时。
+- 早期文档所说「不修改电源方案」描述的是旧实现，现按本节的临时修改与还原规则为准。
 ## [3.1.1] — 2026-10-29 Sonnet
 
 ### 仓库结构

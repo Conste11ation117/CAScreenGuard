@@ -64,7 +64,7 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ 界面语言
 # 显示在所有弹出窗口标题里的版本号
-$script:AppVersion = 'V3.1.1'
+$script:AppVersion = 'V3.2.0'
 if ($Ver) {
     Write-Host ('CAScreenGuard ' + $script:AppVersion)
     Write-Host '作者 / Author : @Conste11ation117'
@@ -430,6 +430,12 @@ $script:GuardLogPath = Join-Path $script:StateDir 'guard.log'
 $script:LastAwakeTick = [datetime]::MinValue
 $script:StartedAt = Get-Date          # guard.log 里算"这次存活多久"用
 $script:LastTickWall = Get-Date
+$script:AwakeFailed = $false          # 唤醒请求是否处于失败态（让失败日志只写一次）
+# 安装时若勾了「锁屏期间临时关闭睡眠/休眠超时」，原值先落这份文件：
+# 进程被强杀/断电时 finally 不跑，下次启动靠它把电源方案还原回去。
+$script:PowerPresavePath = Join-Path $script:StateDir 'power-timeouts-original.txt'
+$script:PowerGuardEnabled = $false     # 安装时勾没勾（外部凭证里读）
+$script:PowerGuardActive = $false      # 本次锁屏有没有真的改过电源方案
 
 function Get-LastCrashLog {
     param([datetime]$NotBefore)
@@ -1271,6 +1277,29 @@ function Invoke-SubmitAttempt {
     }
 }
 
+function Request-KeepAwake {
+    # 统一的一次唤醒请求：只有成功才推进 $script:LastAwakeTick，失败时下一个 250ms tick 立刻重试，
+    # 不再"丢掉返回值、还把时间戳往前推 30 秒"。日志只在失败/恢复这两种状态变化时各写一条，
+    # 免得请求持续失败时把 guard.log 刷满。
+    param([datetime]$Now, [string]$Why)
+    $ok = $false
+    try { $ok = [ScreenLockNative]::KeepSystemAwake() } catch { $ok = $false }
+    if ($ok) {
+        $script:LastAwakeTick = $Now
+        if ($script:AwakeFailed) {
+            $script:AwakeFailed = $false
+            Write-GuardLog '唤醒请求已恢复'
+        }
+    }
+    else {
+        if (-not $script:AwakeFailed) {
+            $script:AwakeFailed = $true
+            Write-GuardLog ('唤醒请求失败（' + $Why + '：进程级电源请求未能建立），将在下一个 tick 重试')
+        }
+    }
+    return $ok
+}
+
 function Invoke-GuardTick {
     try {
         if ($script:AllowClose) { return }
@@ -1282,8 +1311,7 @@ function Invoke-GuardTick {
         $gap = ($now - $script:LastTickWall).TotalSeconds
         if ($gap -gt 5) {
             Write-GuardLog ('定时器中断 {0:N1} 秒，按"可能刚从睡眠/休眠恢复"处理：重新保持唤醒并复位遮罩' -f $gap)
-            try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
-            $script:LastAwakeTick = $now
+            $null = Request-KeepAwake -Now $now -Why '睡眠恢复'
             try { [ScreenLockNative]::ReassertTopMost($script:Form.Handle) } catch { }
             if ($script:State -eq 'Away') {
                 $script:BlankTick = [ScreenLockNative]::GetLastInputTick()
@@ -1293,13 +1321,10 @@ function Invoke-GuardTick {
         }
         $script:LastTickWall = $now
 
-        # 唤醒请求周期复查：这个请求是按线程生效的，睡眠/休眠恢复后可能已经失效，所以每 30 秒重发一次。
-        # 成功不记日志（否则一条流水账被刷满），只记"发不出去"——那才是真出问题的迹象。
+        # 唤醒请求周期复查：睡眠/休眠会让旧请求作废，Modern Standby 上还可能被系统终止。
+        # 每 30 秒重建一次；失败时 Request-KeepAwake 不推进时间戳，下个 tick 就重试。
         if (($now - $script:LastAwakeTick).TotalSeconds -ge 30) {
-            $script:LastAwakeTick = $now
-            $awakeOk = $false
-            try { $awakeOk = [ScreenLockNative]::KeepSystemAwake() } catch { $awakeOk = $false }
-            if (-not $awakeOk) { Write-GuardLog '唤醒请求重发失败（SetThreadExecutionState 返回 0）' }
+            $null = Request-KeepAwake -Now $now -Why '周期复查'
         }
 
         $idle = [uint32][ScreenLockNative]::GetIdleMilliseconds()
@@ -1350,6 +1375,71 @@ function Invoke-GuardTick {
 }
 
 # ------------------------------------------------------------------ 系统状态
+function Get-PowerGuardPreference {
+    # 安装时勾的选项写在外部凭证里：就地升级保留，卸载随整棵树删除。
+    # 老版本没有这个值 -> 默认关，行为与从前一致。
+    try {
+        $v = (Get-ItemProperty -LiteralPath $script:StoreRegPath -Name 'PowerGuard' -ErrorAction Stop).PowerGuard
+        return ("$v" -eq '1')
+    } catch { return $false }
+}
+
+function Restore-PendingPowerTimeouts {
+    # 上次被强杀/断电时，电源超时可能还停在 0。先把系统恢复成原样；
+    # 还原不成功就留着备份文件，下次启动继续试，绝不把用户的原设置丢掉。
+    try {
+        if (-not (Test-Path -LiteralPath $script:PowerPresavePath)) { return }
+        $snap = [System.IO.File]::ReadAllText($script:PowerPresavePath, [System.Text.Encoding]::UTF8).Trim()
+        if ([string]::IsNullOrEmpty($snap)) { return }
+        $ok = $false
+        try { $ok = [ScreenLockNative]::RestorePowerTimeouts($snap) } catch { }
+        if ($ok) {
+            Remove-Item -LiteralPath $script:PowerPresavePath -Force -ErrorAction SilentlyContinue
+            Write-GuardLog '电源策略：睡眠/休眠超时已还原'
+        }
+        else {
+            Write-GuardLog '电源策略：还原失败，保留备份待下次启动重试'
+        }
+    } catch { }
+}
+
+function Enable-TemporaryPowerTimeouts {
+    if ($script:PowerGuardActive) { return }
+    $snap = $null
+    try { $snap = [ScreenLockNative]::GetPowerTimeoutSnapshot() } catch { }
+    if ([string]::IsNullOrEmpty($snap)) {
+        Write-GuardLog '电源策略：读取当前超时失败，跳过临时修改（电源请求仍然生效）'
+        return
+    }
+    # 先落盘再改：进程被强杀/断电时 finally 不跑，下次启动靠这份文件还原。
+    try {
+        if (-not (Test-Path -LiteralPath $script:StateDir)) { New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null }
+        [System.IO.File]::WriteAllText($script:PowerPresavePath, $snap, (New-Object System.Text.UTF8Encoding($false)))
+    }
+    catch {
+        Write-GuardLog '电源策略：原值备份写入失败，跳过临时修改'
+        return
+    }
+    $ok = $false
+    try { $ok = [ScreenLockNative]::DisablePowerTimeouts($snap) } catch { }
+    if ($ok) {
+        $script:PowerGuardActive = $true
+        Write-GuardLog '电源策略：锁屏期间已临时关闭睡眠/休眠超时'
+    }
+    else {
+        # 可能已经写进去一部分：立刻回滚；只有回滚成功才删备份，否则留给下次启动兜底。
+        $rolled = $false
+        try { $rolled = [ScreenLockNative]::RestorePowerTimeouts($snap) } catch { }
+        if ($rolled) {
+            Write-GuardLog '电源策略：临时修改失败，已回滚（电源请求仍然生效）'
+            try { Remove-Item -LiteralPath $script:PowerPresavePath -Force -ErrorAction SilentlyContinue } catch { }
+        }
+        else {
+            Write-GuardLog '电源策略：临时修改失败且回滚未完成，保留备份待下次启动重试'
+        }
+    }
+}
+
 function Restore-PendingScreenSaverSave {
     # 上一次要是被强杀/断电结束的，屏保设置会停在"被我们关掉"的状态，而原值只在这份文件里。
     # 先把系统恢复成原样，再走正常流程 —— 否则这次读到的"原值"就是那个 0，屏保会永久关着。
@@ -1378,6 +1468,8 @@ function Save-ScreenSaverPrerestore {
 
 function Initialize-SystemState {
     Restore-PendingScreenSaverSave          # 先补上一次没还原掉的
+    Restore-PendingPowerTimeouts            # 电源超时同理：上次没还原就先还原
+    $script:PowerGuardEnabled = Get-PowerGuardPreference
     try { $script:OrigScreenSaver = [ScreenLockNative]::GetScreenSaverActive() } catch { $script:OrigScreenSaver = $null }
     try {
         $script:OrigScreenSaverReg = (Get-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction Stop).ScreenSaveActive
@@ -1385,10 +1477,11 @@ function Initialize-SystemState {
     catch { $script:OrigScreenSaverReg = $null }
     Save-ScreenSaverPrerestore              # 改之前先把原值落盘
     try { [ScreenLockNative]::SetScreenSaverActive($false) } catch { }
-    # 保持唤醒 = 告诉系统"这条线程还在干活、别睡"（ES_SYSTEM_REQUIRED，按线程生效）。
-    # 请求失败时定时器里会每 30 秒复查重发一次，所以这里只要把时间戳记下来。
-    try { $null = [ScreenLockNative]::KeepSystemAwake() } catch { }
-    $script:LastAwakeTick = Get-Date
+    # 保持唤醒 = 进程级电源请求（SystemRequired + ExecutionRequired），另加按线程生效的
+    # ES_SYSTEM_REQUIRED 兜底。启动这一次也检查返回值：发不出去不能等 30 秒才发现。
+    $null = Request-KeepAwake -Now (Get-Date) -Why '启动'
+    # 安装时勾了才动电源方案；失败只记日志，上面那层电源请求照旧生效。
+    if ($script:PowerGuardEnabled) { Enable-TemporaryPowerTimeouts }
     # 锁屏期间吞掉 Win / Alt+Tab / Alt+Esc / Ctrl+Esc，堵住开始菜单、窗口缩略图等视觉泄露。
     # -NoKeyboardHook 时整块跳过：全局低级键盘钩子会让每一次按键都先经过本进程，
     # 机器上若有远程控制 / 自动化 / AI 客户端这类程序，可能与它互相干扰。
@@ -1437,6 +1530,7 @@ function Restore-SystemState {
     }
     catch { }
     try { Remove-Item -LiteralPath $script:PresavePath -Force -ErrorAction SilentlyContinue } catch { }
+    Restore-PendingPowerTimeouts             # 还原电源超时（有备份才动，失败会留着下次补）
     try { $null = [ScreenLockNative]::ReleaseKeepAwake() } catch { }
 }
 
